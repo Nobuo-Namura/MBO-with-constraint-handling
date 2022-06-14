@@ -68,7 +68,7 @@ if __name__ == "__main__":
     GENE = True                              # True=Generate initial sample with LHS, False=Read files
     ns = 20                                  # If GENE=True, number of initial sample points (>=2)
     #others
-    hv_ref = np.array([0.16, 0.05])          # reference point for hypervolume
+    hv_ref = np.array([0.16, -0.05])          # reference point for hypervolume
     IGD_plus = True                          # True=IGD+, False=IGD
     PLOT = True                              # True=Plot the results
     RESTART = False                          # True=Read sample*_out.csv if it exists, False=Read sample*.csv
