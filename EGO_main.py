@@ -59,9 +59,9 @@ if __name__ == "__main__":
     nh = 0 #division.loc[nf, 'nh']           # Division number for the outer layer of the two-layered simplex latice-design (>=0)
     nhin = 0 #division.loc[nf, 'nhin']       # Division number for the inner layer of the two-layered simplex latice-design (>=0)
     #multi-objective evolutionary algorithm:
-    npop_ea = division.loc[nf, 'n_ga']       # Number of population for NSGA2
-    nh_ea = division.loc[nf, 'nh_ga']        # Division number for the outer layer of the two-layered simplex latice-design (>=0)
-    nhin_ea = division.loc[nf, 'nhin_ga']    # Division number for the inner layer of the two-layered simplex latice-design (>=0)
+    npop_ea = division.loc[nf, 'n_ea']       # Number of population for NSGA2
+    nh_ea = division.loc[nf, 'nh_ea']        # Division number for the outer layer of the two-layered simplex latice-design (>=0)
+    nhin_ea = division.loc[nf, 'nhin_ea']    # Division number for the inner layer of the two-layered simplex latice-design (>=0)
     n_randvec_ea = 0                         # Number of random reference vector (>=0)
     ngen_ea = 200                            # Number of generation
     #initial sample
