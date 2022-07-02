@@ -13,7 +13,6 @@ MBO part is based on MBO-EPBII-SRVA and MBO-EPBII published in the following art
   Intersection for Expensive Multiobjective Optimization," IEEE Transactions on Evolutionary 
   Computation, vol. 21, no. 6, pp. 898-913, 2017.
 Please cite the article(s) if you use the code.
-This code was developed with Python 3.6.5.
 """
 
 import numpy as np
@@ -61,7 +60,7 @@ class MOEAD_EPBII:
                 x_child = self.mutation_moead(x_child)
                 x, f = self.update_population(ipop, x_child, x, f)
             if self.PRINT:
-                 print(igen, self.npop, f[0], f[int(self.nref/2)], f[-1])
+                 print(igen, self.npop, f.max(), f.mean())
 
         return f, x
     

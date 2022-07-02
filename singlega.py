@@ -13,7 +13,6 @@ MBO part is based on MBO-EPBII-SRVA and MBO-EPBII published in the following art
   Intersection for Expensive Multiobjective Optimization," IEEE Transactions on Evolutionary 
   Computation, vol. 21, no. 6, pp. 898-913, 2017.
 Please cite the article(s) if you use the code.
-This code was developed with Python 3.6.5.
 """
 
 import numpy as np

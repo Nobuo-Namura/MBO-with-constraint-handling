@@ -13,11 +13,9 @@ MBO part is based on MBO-EPBII-SRVA and MBO-EPBII published in the following art
   Intersection for Expensive Multiobjective Optimization," IEEE Transactions on Evolutionary 
   Computation, vol. 21, no. 6, pp. 898-913, 2017.
 Please cite the article(s) if you use the code.
-This code was developed with Python 3.6.5.
 """
 
 import numpy as np
-import optproblems.wfg
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
@@ -27,60 +25,6 @@ import functools
 def sphere(x, nf=1, ng=0):
     x = np.array(x)
     f = np.dot(x,x)
-    return f
-
-#======================================================================
-def WFG1(x, nf=2, ng=0, k=1):
-    x = x*np.arange(2, 2*(len(x)+1), 2)
-    f = optproblems.wfg.WFG1(nf, len(x), k).objective_function(x)
-    return f
-
-#======================================================================
-def WFG2(x, nf=2, ng=0, k=1):
-    x = x*np.arange(2, 2*(len(x)+1), 2)
-    f = optproblems.wfg.WFG2(nf, len(x), k).objective_function(x)
-    return f
-
-#======================================================================
-def WFG3(x, nf=2, ng=0, k=1):
-    x = x*np.arange(2, 2*(len(x)+1), 2)
-    f = optproblems.wfg.WFG3(nf, len(x), k).objective_function(x)
-    return f
-
-#======================================================================
-def WFG4(x, nf=2, ng=0, k=1):
-    x = x*np.arange(2, 2*(len(x)+1), 2)
-    f = optproblems.wfg.WFG4(nf, len(x), k).objective_function(x)
-    return f
-
-#======================================================================
-def WFG5(x, nf=2, ng=0, k=1):
-    x = x*np.arange(2, 2*(len(x)+1), 2)
-    f = optproblems.wfg.WFG5(nf, len(x), k).objective_function(x)
-    return f
-
-#======================================================================
-def WFG6(x, nf=2, ng=0, k=1):
-    x = x*np.arange(2, 2*(len(x)+1), 2)
-    f = optproblems.wfg.WFG6(nf, len(x), k).objective_function(x)
-    return f
-
-#======================================================================
-def WFG7(x, nf=2, ng=0, k=1):
-    x = x*np.arange(2, 2*(len(x)+1), 2)
-    f = optproblems.wfg.WFG7(nf, len(x), k).objective_function(x)
-    return f
-
-#======================================================================
-def WFG8(x, nf=2, ng=0, k=1):
-    x = x*np.arange(2, 2*(len(x)+1), 2)
-    f = optproblems.wfg.WFG8(nf, len(x), k).objective_function(x)
-    return f
-
-#======================================================================
-def WFG9(x, nf=2, ng=0, k=1):
-    x = x*np.arange(2, 2*(len(x)+1), 2)
-    f = optproblems.wfg.WFG9(nf, len(x), k).objective_function(x)
     return f
 
 #======================================================================

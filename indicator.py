@@ -7,7 +7,7 @@ This code is released under the MIT License.
 
 import numpy as np
 from scipy.spatial import distance
-from pygmo import hypervolume
+from pymoo.factory import get_performance_indicator
 
 #======================================================================
 def rmse_history(x_rmse, problem, func, nfg=0):
@@ -32,10 +32,8 @@ def igd_history(f, igd_ref, plus=False, MIN=[]):
 
 #======================================================================
 def hv_history(f, hv_ref, MIN=[]):
-    f_hv = np.where(MIN, 1.0, -1.0)*(f - hv_ref)
-    f_hv = f_hv[np.all(f_hv<0.0, axis=1),:]
-    if len(f_hv) > 0:
-        hv = hypervolume(f_hv).compute(np.zeros(len(MIN)))
-    else:
-        hv = 0.0
-    return hv
+    f_min = np.where(MIN, 1.0, -1.0)*f
+    ref_min = np.where(MIN, 1.0, -1.0)*hv_ref
+    hv = get_performance_indicator("hv", ref_point=ref_min)
+    hv_min = hv.do(f_min)
+    return hv_min

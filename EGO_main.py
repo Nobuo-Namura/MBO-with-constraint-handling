@@ -13,7 +13,6 @@ MBO part is based on MBO-EPBII-SRVA and MBO-EPBII published in the following art
   Intersection for Expensive Multiobjective Optimization," IEEE Transactions on Evolutionary 
   Computation, vol. 21, no. 6, pp. 898-913, 2017.
 Please cite the article(s) if you use the code.
-This code was developed with Python 3.6.5.
 """
 
 import numpy as np
@@ -68,7 +67,7 @@ if __name__ == "__main__":
     GENE = True                              # True=Generate initial sample with LHS, False=Read files
     ns = 20                                  # If GENE=True, number of initial sample points (>=2)
     #others
-    hv_ref = np.array([0.16, -0.05])          # reference point for hypervolume
+    hv_ref = np.array([0.16, -0.05])         # reference point for hypervolume
     IGD_plus = True                          # True=IGD+, False=IGD
     PLOT = True                              # True=Plot the results
     RESTART = False                          # True=Read sample*_out.csv if it exists, False=Read sample*.csv
