@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Kriging.py
+mbo.py
 Copyright (c) 2022 Nobuo Namura
 This code is released under the MIT License, see LICENSE.txt.
 

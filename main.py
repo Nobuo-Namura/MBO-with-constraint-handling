@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-EGO_main.py
+main.py
 Copyright (c) 2022 Nobuo Namura
 This code is released under the MIT License, see LICENSE.txt.
 
