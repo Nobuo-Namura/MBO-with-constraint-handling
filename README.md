@@ -3,7 +3,7 @@ This Python code is for multi-objective Bayesian optimization (MBO) with/without
 This code is released under the MIT License, see LICENSE.txt.  
 
 ## Usage
-You can start with "EGO_main_interactive.ipynb" or "EGO_main.py".  
+You can start with "main_interactive.ipynb" or "main.py".  
 Detailed usage is written in "EGO_main_interactive.ipynb".
 
 ## Citation
@@ -20,7 +20,8 @@ Please cite the article(s) if you use the code.
 * matplotlib
 * scikit-learn
 * pymoo
-* pyDOE
+* pyDOE2
+* optproblems
 
 ## Contact
 Nobuo Namura (nobuo.namura.gp@gmail.com)

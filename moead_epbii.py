@@ -16,19 +16,19 @@ Please cite the article(s) if you use the code.
 """
 
 import numpy as np
-from pyDOE import lhs
+from pyDOE2 import lhs
 from scipy.spatial.distance import cdist
 
 #======================================================================
 class MOEAD_EPBII:
 #======================================================================
-    def __init__(self, refvec, func, xmin, xmax, ngen=100, PRINT=False, HOT_START=True, nghbr=20, \
+    def __init__(self, refvec, func, xmin, xmax, ngen=100, PRINT=False, HOTSTART=True, nghbr=20, \
                  factor=1.0, pcross=1.0, pmut=0.1, eta_c=10.0, eta_m=20.0, eps=1.e-14):
         self.refvec = refvec
         self.func = func
         self.MIN = False
         self.PRINT = PRINT
-        self.HOT_START = HOT_START
+        self.HOTSTART = HOTSTART
         self.xmin = xmin
         self.xmax = xmax
         self.nx = len(self.xmin)
@@ -50,7 +50,7 @@ class MOEAD_EPBII:
         x, f = self.initialization(x_init)
         
         if self.PRINT:
-            print(igen, self.npop, f[0], f[int(self.nref/2)], f[-1])
+            print(igen, self.npop, f.max(), f.mean())
         
         for igen in range(2,self.ngen+1):
             for ipop in range(self.npop):
@@ -72,7 +72,7 @@ class MOEAD_EPBII:
 
 #======================================================================
     def initialization(self, x_init):
-        if self.HOT_START:
+        if self.HOTSTART:
             x = x_init
         else:
             x = lhs(self.nx, samples=self.npop, criterion='cm')

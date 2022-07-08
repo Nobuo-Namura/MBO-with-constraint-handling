@@ -24,12 +24,10 @@ import time
 import shutil
 import os
 
-from kriging import Kriging
+from mbo import MultiobjectiveBayesianOptiization
 import test_problem
 from initial_sample import generate_initial_sample
 import indicator
-
-
 
 #======================================================================
 if __name__ == "__main__":
@@ -50,7 +48,6 @@ if __name__ == "__main__":
     ns_max = 40                              # Number of maximum function evaluation
     CRITERIA = 'EPBII'                       # EPBII or EIPBII
     NOISE = np.full(nf+ng,False)             # Use True if functions are noisy (Griewank, Rastrigin, DTLZ1, etc.)
-    VER2021 = True                           # True=2021 version, False=2017 version
     SRVA = True                              # True=surrogate-assisted reference vector adaptation, False=two-layered simplex latice-design
     OPTIMIZER = 'NSGA3'                      # NSGA3 or NSGA2 for ideal and nadir point determination (and reference vector adaptation if VER2021=True)
     #reference vector for EPBII
@@ -65,9 +62,9 @@ if __name__ == "__main__":
     ngen_ea = 200                            # Number of generation
     #initial sample
     GENE = True                              # True=Generate initial sample with LHS, False=Read files
-    ns = 20                                  # If GENE=True, number of initial sample points (>=2)
+    ns = 30                                  # If GENE=True, number of initial sample points (>=2)
     #others
-    hv_ref = np.array([0.16, -0.05])         # reference point for hypervolume
+    hv_ref = np.array([0.2, 0.15])           # reference point for hypervolume
     IGD_plus = True                          # True=IGD+, False=IGD
     PLOT = True                              # True=Plot the results
     RESTART = False                          # True=Read sample*_out.csv if it exists, False=Read sample*.csv
@@ -79,15 +76,9 @@ if __name__ == "__main__":
     """=== Edit End ================================================="""
     
     #Initial sample
-    if func_name == 'SGM':
-        problem = functools.partial(eval('test_problem.'+func_name), nf=nf, ng=ng, seed=seed)
-        if GENE:
-            generate_initial_sample(func_name, nx, nf, ng, ns, n_trial, xmin, xmax, current_dir, fname_design_space, fname_sample, seed=seed)
-    else:
-        problem = functools.partial(eval('test_problem.'+func_name), nf=nf, ng=ng)
-        if GENE:
-            generate_initial_sample(func_name, nx, nf, ng, ns, n_trial, xmin, xmax, current_dir, fname_design_space, fname_sample, k=k)
-    f_design_space = current_dir + '/' + fname_design_space + '.csv'
+    problem = test_problem.define_problem(func_name, nf, ng, k, seed)
+    df_samples, df_design_space = generate_initial_sample(func_name, nx, nf, ng, ns, n_trial, xmin, xmax, current_dir, fname_design_space, fname_sample, k=k, seed=seed, FILE=True)
+
     if func_name == 'SGM':
         file = path_IGD_ref + '/' + func_name + str(seed) + 'x' + str(nx) +'f' + str(nf) + '.csv'
         if os.path.exists(file):
@@ -101,10 +92,8 @@ if __name__ == "__main__":
             IGD_FLAG = True
             igd_ref = np.loadtxt(path_IGD_ref + '/' + func_name + 'f' + str(nf) + '.csv', delimiter=',')
         else:
-            IGD_FLAG = False
-    gp = Kriging(MIN, CRITERIA, n_add, n_randvec, nh, nhin, n_randvec_ea, nh_ea, nhin_ea, ngen_ea, \
-                 npop_ea, VER2021, SRVA, OPTIMIZER, pbi_theta=1.0)
-    
+            IGD_FLAG = False        
+        
     #Preprocess for RMSE
     if nx == 2:
         ndiv = 101
@@ -130,8 +119,12 @@ if __name__ == "__main__":
         else:
             f_sample = current_dir + '/' + fname_sample + str(itrial) + '.csv'
             FILEIN = True
-        gp.read_sample(f_sample)
-        gp.normalize_x(f_design_space)
+        df_sample = pd.read_csv(f_sample)
+        
+        gp = MultiobjectiveBayesianOptiization(df_sample, df_design_space, MIN, n_add, n_randvec, nh, nhin, \
+                                               n_randvec_ea, nh_ea, nhin_ea, ngen_ea, npop_ea, \
+                                               CRITERIA, OPTIMIZER, SRVA, pbi_theta=1.0)
+        
         x_rmse = gp.xmin + (gp.xmax-gp.xmin)*x_rmse0
         max_iter = int((ns_max + (n_add - 1) - gp.ns)/n_add)
         rmse = np.zeros([max_iter, gp.nf + gp.ng])
@@ -159,101 +152,98 @@ if __name__ == "__main__":
         
         #Main loop for EGO
         for itr in range(max_iter):
-            try:
-                times.append(time.time())
-                print('=== Iteration = '+str(itr)+', Number of sample = '+str(gp.ns)+' ======================')
-                
-                #Kriging and infill criterion
-                gp.kriging_training(theta0 = 3.0, npop = 500, ngen = 500, mingen=0, STOP=True, NOISE=NOISE)
-                x_add, f_add_est, g_add_est = gp.kriging_infill(PLOT=True)
-                times.append(time.time())
+            times.append(time.time())
+            print('=== Iteration = '+str(itr)+', Number of sample = '+str(gp.ns)+' ======================')
+            
+            #Kriging and infill criterion
+            theta = gp.training(theta0 = 3.0, npop = 500, ngen = 500, mingen=0, STOP=True, NOISE=NOISE)
+            gp.construction(theta)
+            x_add, f_add_est, g_add_est = gp.maximize_epbii(PLOT=False, PRINT=True)
+            times.append(time.time())
 
-                #RMSE
-                for ifg in range(gp.nf + gp.ng):
-                    krig = functools.partial(gp.kriging_f, nfg=ifg)
-                    rmse[itr, ifg] = indicator.rmse_history(x_rmse, problem, krig, ifg)
+            #RMSE
+            for ifg in range(gp.nf + gp.ng):
+                krig = functools.partial(gp.estimate_f, nfg=ifg)
+                rmse[itr, ifg] = indicator.rmse_history(x_rmse, problem, krig, ifg)
 
-                #Add sample points
-                for i_add in range(gp.n_add):
-                    f_add = problem(x_add[i_add])
-                    gp.add_sample(x_add[i_add],f_add)
-                
-                #Indicators and file output
+            #Add sample points
+            f_add = np.array([problem(x_add[i]) for i in range(len(x_add))])
+            gp.add_sample(x_add, f_add)
+            
+            #Indicators and file output
+            with open(f_indicator, 'a') as file:
+                data = np.hstack([itr, gp.ns-gp.n_add, times[-1]-times[-2], igd[itr], hv[itr], rmse[itr, :]])
+                np.savetxt(file, data.reshape([1,len(data)]), delimiter=',')
+            with open(f_sample_out, 'a') as file:
+                data = np.hstack([gp.x[-gp.n_add:,:], gp.f[-gp.n_add:,:], gp.g[-gp.n_add:,:]])
+                np.savetxt(file, data, delimiter=',')
+            rank = gp.pareto_ranking(gp.f, gp.g)
+            if not IGD_FLAG:
+                igd[itr+1] = np.nan
+            else:
+                igd[itr+1] = indicator.igd_history(gp.f[rank==1.0], igd_ref, IGD_plus, MIN)
+            hv[itr+1] = indicator.hv_history(gp.f[rank==1.0], hv_ref, MIN)
+            if itr == max_iter-1:
                 with open(f_indicator, 'a') as file:
-                    data = np.hstack([itr, gp.ns-gp.n_add, times[-1]-times[-2], igd[itr], hv[itr], rmse[itr, :]])
+                    data = np.array([itr+1, gp.ns, 0.0, igd[itr+1], hv[itr+1]])
                     np.savetxt(file, data.reshape([1,len(data)]), delimiter=',')
-                with open(f_sample_out, 'a') as file:
-                    data = np.hstack([gp.x[-gp.n_add:,:], gp.f[-gp.n_add:,:], gp.g[-gp.n_add:,:]])
-                    np.savetxt(file, data, delimiter=',')
-                rank = gp.pareto_ranking(gp.f, gp.g)
-                if not IGD_FLAG:
-                    igd[itr+1] = np.nan
-                else:
-                    igd[itr+1] = indicator.igd_history(gp.f[rank==1.0], igd_ref, IGD_plus, MIN)
-                hv[itr+1] = indicator.hv_history(gp.f[rank==1.0], hv_ref, MIN)
-                if itr == max_iter-1:
-                    with open(f_indicator, 'a') as file:
-                        data = np.array([itr+1, gp.ns, 0.0, igd[itr+1], hv[itr+1]])
-                        np.savetxt(file, data.reshape([1,len(data)]), delimiter=',')
-                
-                #Visualization
-                if PLOT:
-                    pareto = rank==1.0
-                    feasible = ~np.any(gp.g>0, axis=1)
-                    if nf == 2:
-                        plt.figure('2D Objective-space '+func_name+' with '+str(gp.ns-gp.n_add)+'-samples')
-                        plt.scatter(gp.f[feasible,0], gp.f[feasible,1], marker='o', c='black', s=10, label='feasible sample points')
-                        plt.scatter(gp.f[~feasible,0], gp.f[~feasible,1], marker='x', c='black', s=10, label='infeasible sample points')
-                        plt.scatter(gp.f_opt[:,0], gp.f_opt[:,1], marker='o', c='grey', s=10, label='estimated PF')
-                        plt.plot(gp.utopia[0], gp.utopia[1], '+', c='black', label='utopia point')
-                        plt.plot(gp.nadir[0], gp.nadir[1], '+', c='black', label='nadir point')
-                        plt.scatter(gp.f_candidate[:,0], gp.f_candidate[:,1], c=gp.fitness_org, cmap='jet', marker='o', s=40, label='candidate points')
-                        plt.scatter(f_add_est[:,0],f_add_est[:,1], facecolors='none', edgecolors='magenta', marker='o', s=60, linewidth=2, label='selected candidate points')
-                        plt.scatter(gp.f[-gp.n_add:,0], gp.f[-gp.n_add:,1], facecolors='magenta', marker='x', s=30, linewidth=1.5, label='additional sample points')
-                        plt.legend()
-                        plt.show(block=False)
-                        title = current_dir + '/2D_Objective_space_'+func_name+' with '+str(gp.ns-gp.n_add)+'-samples_in_'+str(itrial)+'-th_trial.png'
-                        plt.savefig(title, dpi=300)
-                        plt.close()
-                        
-                        plt.figure('solutions on 2D Objective-space '+func_name+' with '+str(gp.ns)+'-samples')
-                        if not IGD_FLAG:
-                            pass
-                        else:
-                            plt.scatter(igd_ref[:,0], igd_ref[:,1],c='green',s=1)
-                        plt.scatter(gp.f[pareto,0], gp.f[pareto,1],c='blue',s=20,marker='o')
-                        title = current_dir + '/Optimal_solutions_'+func_name+' with '+str(gp.ns)+'-samples_in_'+str(itrial)+'-th_trial.png'
-                        plt.savefig(title)
-                        plt.close()
-                        
-                    elif nf == 3:
-                        fig = plt.figure('3D Objective-space '+func_name+' with '+str(gp.ns-gp.n_add)+'-samples')
-                        ax = Axes3D(fig)
-                        # ax.scatter3D(gp.f[rank>1,0], gp.f[rank>1,1], gp.f[rank>1,2], marker='o', c='black', s=10, label='sample points')
-                        # ax.scatter3D(gp.f_opt[:,0], gp.f_opt[:,1], gp.f_opt[:,2], marker='o', c='grey', s=10, alpha=0.5, label='estimated PF')
-                        ax.scatter3D(gp.f[pareto,0], gp.f[pareto,1], gp.f[pareto,2], marker='o', c='blue', s=20, label='NDSs among sample points')
-                        ax.scatter3D(gp.f_candidate[:,0], gp.f_candidate[:,1], gp.f_candidate[:,2], c=gp.fitness_org, cmap='jet', marker='*', s=40, label='candidate points')
-                        ax.scatter3D(f_add_est[:,0], f_add_est[:,1], f_add_est[:,-1], marker='o', c='none', edgecolor='magenta', s=60, linewidth=2, label='selected candidate points')
-                        ax.scatter3D(gp.f[-gp.n_add:,0],gp.f[-gp.n_add:,1],gp.f[-gp.n_add:,-1], marker='o', c='none', edgecolor='black', s=60, linewidth=2, label='additional sample points')
-                        ax.view_init(elev=30, azim=45)
-                        plt.legend()
-                        title = current_dir + '/3D_Objective_space_'+func_name+' with '+str(gp.ns-gp.n_add)+'-samples_in_'+str(itrial)+'-th_trial.png'
-                        plt.savefig(title)
-                        plt.close()
-                        
-                        fig2 = plt.figure('solutions on 3D Objective-space '+func_name+' with '+str(gp.ns)+'-samples')
-                        ax2 = Axes3D(fig2)
-                        if not IGD_FLAG:
-                            pass
-                        else:
-                            ax2.scatter3D(igd_ref[:,0],igd_ref[:,1],igd_ref[:,-1],c='green',s=1)
-                        ax2.scatter3D(gp.f[pareto,0],gp.f[pareto,1],gp.f[pareto,-1],c='blue',s=20,marker='o')
-                        ax2.view_init(elev=30, azim=45)
-                        title = current_dir + '/Optimal_solutions_'+func_name+' with '+str(gp.ns)+'-samples_in_'+str(itrial)+'-th_trial.png'
-                        plt.savefig(title)
-                        plt.close()
-            except:
-                break
+            
+            #Visualization
+            if PLOT:
+                pareto = rank==1.0
+                feasible = ~np.any(gp.g>0, axis=1)
+                if nf == 2:
+                    plt.figure('2D Objective-space '+func_name+' with '+str(gp.ns-gp.n_add)+'-samples')
+                    plt.scatter(gp.f[feasible,0], gp.f[feasible,1], marker='o', c='black', s=10, label='feasible sample points')
+                    plt.scatter(gp.f[~feasible,0], gp.f[~feasible,1], marker='x', c='black', s=10, label='infeasible sample points')
+                    plt.scatter(gp.f_opt[:,0], gp.f_opt[:,1], marker='o', c='grey', s=10, label='estimated PF')
+                    plt.plot(gp.utopia[0], gp.utopia[1], '+', c='black', label='utopia point')
+                    plt.plot(gp.nadir[0], gp.nadir[1], '+', c='black', label='nadir point')
+                    plt.scatter(gp.f_candidate[:,0], gp.f_candidate[:,1], c=gp.fitness_org, cmap='jet', marker='o', s=40, label='candidate points')
+                    plt.scatter(f_add_est[:,0],f_add_est[:,1], facecolors='none', edgecolors='magenta', marker='o', s=60, linewidth=2, label='selected candidate points')
+                    plt.scatter(gp.f[-gp.n_add:,0], gp.f[-gp.n_add:,1], facecolors='magenta', marker='x', s=30, linewidth=1.5, label='additional sample points')
+                    plt.legend()
+                    plt.show(block=False)
+                    title = current_dir + '/2D_Objective_space_'+func_name+' with '+str(gp.ns-gp.n_add)+'-samples_in_'+str(itrial)+'-th_trial.png'
+                    plt.savefig(title, dpi=300)
+                    plt.close()
+                    
+                    plt.figure('solutions on 2D Objective-space '+func_name+' with '+str(gp.ns)+'-samples')
+                    if not IGD_FLAG:
+                        pass
+                    else:
+                        plt.scatter(igd_ref[:,0], igd_ref[:,1],c='green',s=1)
+                    plt.scatter(gp.f[pareto,0], gp.f[pareto,1],c='blue',s=20,marker='o')
+                    title = current_dir + '/Optimal_solutions_'+func_name+' with '+str(gp.ns)+'-samples_in_'+str(itrial)+'-th_trial.png'
+                    plt.savefig(title)
+                    plt.close()
+                    
+                elif nf == 3:
+                    fig = plt.figure('3D Objective-space '+func_name+' with '+str(gp.ns-gp.n_add)+'-samples')
+                    ax = Axes3D(fig)
+                    # ax.scatter3D(gp.f[rank>1,0], gp.f[rank>1,1], gp.f[rank>1,2], marker='o', c='black', s=10, label='sample points')
+                    # ax.scatter3D(gp.f_opt[:,0], gp.f_opt[:,1], gp.f_opt[:,2], marker='o', c='grey', s=10, alpha=0.5, label='estimated PF')
+                    ax.scatter3D(gp.f[pareto,0], gp.f[pareto,1], gp.f[pareto,2], marker='o', c='blue', s=20, label='NDSs among sample points')
+                    ax.scatter3D(gp.f_candidate[:,0], gp.f_candidate[:,1], gp.f_candidate[:,2], c=gp.fitness_org, cmap='jet', marker='*', s=40, label='candidate points')
+                    ax.scatter3D(f_add_est[:,0], f_add_est[:,1], f_add_est[:,-1], marker='o', c='none', edgecolor='magenta', s=60, linewidth=2, label='selected candidate points')
+                    ax.scatter3D(gp.f[-gp.n_add:,0],gp.f[-gp.n_add:,1],gp.f[-gp.n_add:,-1], marker='o', c='none', edgecolor='black', s=60, linewidth=2, label='additional sample points')
+                    ax.view_init(elev=30, azim=45)
+                    plt.legend()
+                    title = current_dir + '/3D_Objective_space_'+func_name+' with '+str(gp.ns-gp.n_add)+'-samples_in_'+str(itrial)+'-th_trial.png'
+                    plt.savefig(title)
+                    plt.close()
+                    
+                    fig2 = plt.figure('solutions on 3D Objective-space '+func_name+' with '+str(gp.ns)+'-samples')
+                    ax2 = Axes3D(fig2)
+                    if not IGD_FLAG:
+                        pass
+                    else:
+                        ax2.scatter3D(igd_ref[:,0],igd_ref[:,1],igd_ref[:,-1],c='green',s=1)
+                    ax2.scatter3D(gp.f[pareto,0],gp.f[pareto,1],gp.f[pareto,-1],c='blue',s=20,marker='o')
+                    ax2.view_init(elev=30, azim=45)
+                    title = current_dir + '/Optimal_solutions_'+func_name+' with '+str(gp.ns)+'-samples_in_'+str(itrial)+'-th_trial.png'
+                    plt.savefig(title)
+                    plt.close()
     if n_trial > 1:
         dfs = []
         for i in range(n_trial):

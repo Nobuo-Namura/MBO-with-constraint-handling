@@ -3,28 +3,81 @@
 test_problem.py
 Copyright (c) 2022 Nobuo Namura
 This code is released under the MIT License, see LICENSE.txt.
-
-This Python code is for multi-objective Bayesian optimization (MBO) with/without constraint handling.
-MBO part is based on MBO-EPBII-SRVA and MBO-EPBII published in the following articles:
-・N. Namura, "Surrogate-Assisted Reference Vector Adaptation to Various Pareto Front Shapes 
-  for Many-Objective Bayesian Optimization," IEEE Congress on Evolutionary Computation, 
-  Krakow, Poland, pp.901-908, 2021.
-・N. Namura, K. Shimoyama, and S. Obayashi, "Expected Improvement of Penalty-based Boundary 
-  Intersection for Expensive Multiobjective Optimization," IEEE Transactions on Evolutionary 
-  Computation, vol. 21, no. 6, pp. 898-913, 2017.
-Please cite the article(s) if you use the code.
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib import cm
 import functools
+import optproblems.wfg
+
+#======================================================================
+def define_problem(func_name, nf=2, ng=0, k=4, seed=1):
+    if func_name == 'SGM':
+        problem = functools.partial(eval(func_name), nf=nf, ng=ng, seed=seed)
+    elif 'WFG' in func_name:
+        problem = functools.partial(eval(func_name), nf=nf, ng=ng, k=k)
+    else:
+        problem = functools.partial(eval(func_name), nf=nf, ng=ng)
+    return problem
 
 #======================================================================
 def sphere(x, nf=1, ng=0):
     x = np.array(x)
     f = np.dot(x,x)
+    return f
+
+#======================================================================
+def WFG1(x, nf=2, ng=0, k=1):
+    x = x*np.arange(2, 2*(len(x)+1), 2)
+    f = optproblems.wfg.WFG1(nf, len(x), k).objective_function(x)
+    return f
+
+#======================================================================
+def WFG2(x, nf=2, ng=0, k=1):
+    x = x*np.arange(2, 2*(len(x)+1), 2)
+    f = optproblems.wfg.WFG2(nf, len(x), k).objective_function(x)
+    return f
+
+#======================================================================
+def WFG3(x, nf=2, ng=0, k=1):
+    x = x*np.arange(2, 2*(len(x)+1), 2)
+    f = optproblems.wfg.WFG3(nf, len(x), k).objective_function(x)
+    return f
+
+#======================================================================
+def WFG4(x, nf=2, ng=0, k=1):
+    x = x*np.arange(2, 2*(len(x)+1), 2)
+    f = optproblems.wfg.WFG4(nf, len(x), k).objective_function(x)
+    return f
+
+#======================================================================
+def WFG5(x, nf=2, ng=0, k=1):
+    x = x*np.arange(2, 2*(len(x)+1), 2)
+    f = optproblems.wfg.WFG5(nf, len(x), k).objective_function(x)
+    return f
+
+#======================================================================
+def WFG6(x, nf=2, ng=0, k=1):
+    x = x*np.arange(2, 2*(len(x)+1), 2)
+    f = optproblems.wfg.WFG6(nf, len(x), k).objective_function(x)
+    return f
+
+#======================================================================
+def WFG7(x, nf=2, ng=0, k=1):
+    x = x*np.arange(2, 2*(len(x)+1), 2)
+    f = optproblems.wfg.WFG7(nf, len(x), k).objective_function(x)
+    return f
+
+#======================================================================
+def WFG8(x, nf=2, ng=0, k=1):
+    x = x*np.arange(2, 2*(len(x)+1), 2)
+    f = optproblems.wfg.WFG8(nf, len(x), k).objective_function(x)
+    return f
+
+#======================================================================
+def WFG9(x, nf=2, ng=0, k=1):
+    x = x*np.arange(2, 2*(len(x)+1), 2)
+    f = optproblems.wfg.WFG9(nf, len(x), k).objective_function(x)
     return f
 
 #======================================================================
@@ -311,12 +364,10 @@ if __name__ == "__main__":
     nx = 2
     nf = 2
     ng = 1
+    k = 1
     xmin = np.full(nx, 0.0)
     xmax = np.full(nx, 1.0)
-    if func_name=='SGM':
-        func = functools.partial(eval(func_name), nf=nf+ng, seed=seed)
-    else:
-        func = functools.partial(eval(func_name), nf=nf+ng)
+    func = define_problem(func_name, nf=nf, ng=ng, k=k, seed=seed)
     
     if nx ==2:
         Fs = []
@@ -339,16 +390,14 @@ if __name__ == "__main__":
             plt.colorbar()
             plt.contour(X,Y,F,40,colors='black')
             plt.show()
-            # fig = plt.figure(str(iobj+1)+'-th function-3D ')
-            # ax = Axes3D(fig)
-            # ax.plot_surface(X, Y, F, rstride=1, cstride=1, cmap=cm.jet)
         Fs = np.array(Fs)
         Gs = np.array(Gs)
-        feasible = np.all(Gs<=0, axis=0)
-        for iobj in range(nf):
-            F = np.where(feasible, Fs[iobj,:,:], np.nan)
-            plt.figure(str(iobj+1)+'-th function in feasible area')
-            plt.pcolor(X,Y,F,cmap='jet',shading="auto")
-            plt.colorbar()
-            plt.contour(X,Y,F,40,colors='black')
-            plt.show()
+        if ng > 0:
+            feasible = np.all(Gs<=0, axis=0)
+            for iobj in range(nf):
+                F = np.where(feasible, Fs[iobj,:,:], np.nan)
+                plt.figure(str(iobj+1)+'-th function in feasible area')
+                plt.pcolor(X,Y,F,cmap='jet',shading="auto")
+                plt.colorbar()
+                plt.contour(X,Y,F,40,colors='black')
+                plt.show()

@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 import functools
-from pyDOE import lhs
+from pyDOE2 import lhs
 import sys
 
 import test_problem
@@ -29,7 +29,7 @@ import test_problem
 class SingleGA:
 #======================================================================
     def __init__(self, func, xmin, xmax, npop=100, ngen=100, mingen=0, \
-                 MIN=True, STOP=True, PRINT=False, INIT=False, \
+                 MIN=True, STOP=True, PRINT=False, HOTSTART=False, \
                  istop=10, err=1.e-8, pcross=0.9, pmut=0.1, eta_c=10.0, eta_m=20.0, eps=1.e-14):
         if np.mod(npop,4)!=0:
             print("npop must be a multiple of 4")
@@ -37,7 +37,7 @@ class SingleGA:
         self.MIN = MIN
         self.STOP = STOP
         self.PRINT = PRINT
-        self.INIT = INIT
+        self.HOTSTART = HOTSTART
         self.func = func
         self.xmin = xmin
         self.xmax = xmax
@@ -56,7 +56,7 @@ class SingleGA:
 #======================================================================
     def optimize(self, x_init=0):
         igen = 1
-        x, f = self.initialization(x_init)
+        x, f = self._initialization(x_init)
         if self.MIN:
             fopt = np.min(f)
             xopt = x[np.argmin(f),:]
@@ -78,10 +78,10 @@ class SingleGA:
                 else:
                     icnv = 0
             fopt0 = fopt
-            xnew = self.selection(x, f)
-            xnew = self.mutation(xnew)
+            xnew = self._selection(x, f)
+            xnew = self._mutation(xnew)
             fnew = np.apply_along_axis(self.func,1,xnew)
-            x, f = self.bestN(x, xnew, f, fnew)
+            x, f = self._bestn(x, xnew, f, fnew)
             if self.MIN:
                 ipop = np.argmin(f)
                 xopt = x[ipop,:]
@@ -101,20 +101,20 @@ class SingleGA:
         return fopt, xopt
     
 #======================================================================
-    def initialization(self, x_init):
-        if self.INIT:
+    def _initialization(self, x_init):
+        if self.HOTSTART:
             lpop = self.npop-1
         else:
             lpop = self.npop
         x = lhs(self.nx, samples=lpop, criterion='cm')
         x = self.xmin + x*(self.xmax - self.xmin)
-        if self.INIT:
+        if self.HOTSTART:
             x = np.vstack([x, x_init])
         f = np.apply_along_axis(self.func,1,x)
         return x, f
     
 #======================================================================
-    def selection(self, x, f):
+    def _selection(self, x, f):
         xnew = x.copy()
         a1 = np.arange(self.npop)
         a2 = np.arange(self.npop)
@@ -128,16 +128,16 @@ class SingleGA:
             a2[rand] = a2[i]
             a2[i] = temp
         for i in range(0, self.npop, 4):
-            parent1 = self.tournament(a1[i], a1[i+1], f)
-            parent2 = self.tournament(a1[i+2], a1[i+3], f)
-            xnew[i,:], xnew[i+1,:] = self.crossover(parent1, parent2, x.copy())
-            parent1 = self.tournament(a2[i], a2[i+1], f)
-            parent2 = self.tournament(a2[i+2], a2[i+3], f)
-            xnew[i+2,:], xnew[i+3,:] = self.crossover(parent1, parent2, x.copy())
+            parent1 = self._tournament(a1[i], a1[i+1], f)
+            parent2 = self._tournament(a1[i+2], a1[i+3], f)
+            xnew[i,:], xnew[i+1,:] = self._crossover(parent1, parent2, x.copy())
+            parent1 = self._tournament(a2[i], a2[i+1], f)
+            parent2 = self._tournament(a2[i+2], a2[i+3], f)
+            xnew[i+2,:], xnew[i+3,:] = self._crossover(parent1, parent2, x.copy())
         return xnew
     
 #======================================================================
-    def tournament(self, a1, a2, f):
+    def _tournament(self, a1, a2, f):
         if self.MIN:
             if f[a1] < f[a2]:
                 return a1
@@ -160,7 +160,7 @@ class SingleGA:
                     return a1
     
 #======================================================================
-    def crossover(self, p1, p2, x):
+    def _crossover(self, p1, p2, x):
         child1 = x[p1,:]
         child2 = x[p2,:]
         if np.random.uniform() <= self.pcross:
@@ -209,7 +209,7 @@ class SingleGA:
         return child1, child2
 
 #======================================================================
-    def mutation(self, x):
+    def _mutation(self, x):
         for i in range(self.npop):
             for j in range(self.nx):
                 if np.random.uniform() <= self.pmut:
@@ -237,7 +237,7 @@ class SingleGA:
         return x
 
 #======================================================================
-    def bestN(self, x, xnew, f, fnew):
+    def _bestn(self, x, xnew, f, fnew):
         x2n = np.vstack([x,xnew])
         f2n = np.hstack([f,fnew])
         order = np.argsort(f2n)
@@ -257,8 +257,8 @@ if __name__ == "__main__":
     xmin = np.full(nx, -0.5)
     xmax = np.full(nx, 0.5)
     func = functools.partial(eval('test_problem.'+func_name), nf=nf)
-    SGA = SingleGA(func, xmin, xmax, npop=100, ngen=100, MIN=True, STOP=False, PRINT=True, pcross=0.9, pmut=1.0/len(xmin))
-    fopt, xopt = SGA.optimize()
+    sga = SingleGA(func, xmin, xmax, npop=100, ngen=100, MIN=True, STOP=False, PRINT=True, pcross=0.9, pmut=1.0/len(xmin))
+    fopt, xopt = sga.optimize()
     
     if nx ==2:
         x = xmin[0]+np.arange(0., 1.01, 0.01)*(xmax[0]-xmin[0])
