@@ -169,7 +169,7 @@ class GaussianProcess:
             pdf = 1.0/np.sqrt(2.0*np.pi)*np.exp(-0.5*y**2.0)
             ei = s*(y*cdf + pdf)
         elif (MIN and f < fref) or (not MIN and f > fref):
-            ei = 1.0
+            ei = np.abs(f - fref)
         else:
             ei = 0.0
         return ei
