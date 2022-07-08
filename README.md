@@ -4,7 +4,7 @@ This code is released under the MIT License, see LICENSE.txt.
 
 ## Usage
 You can start with "main_interactive.ipynb" or "main.py".  
-Detailed usage is written in "EGO_main_interactive.ipynb".
+Detailed usage is written in "main_interactive.ipynb".
 
 ## Citation
 MBO part is based on MBO-EPBII-SRVA and MBO-EPBII published in the following articles:  
