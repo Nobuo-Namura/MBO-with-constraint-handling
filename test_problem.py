@@ -3,6 +3,16 @@
 test_problem.py
 Copyright (c) 2022 Nobuo Namura
 This code is released under the MIT License, see LICENSE.txt.
+
+This Python code is for multi-objective Bayesian optimization (MBO) with/without constraint handling.
+MBO part is based on MBO-EPBII-SRVA and MBO-EPBII published in the following articles:
+・N. Namura, "Surrogate-Assisted Reference Vector Adaptation to Various Pareto Front Shapes 
+  for Many-Objective Bayesian Optimization," IEEE Congress on Evolutionary Computation, 
+  Krakow, Poland, pp.901-908, 2021.
+・N. Namura, K. Shimoyama, and S. Obayashi, "Expected Improvement of Penalty-based Boundary 
+  Intersection for Expensive Multiobjective Optimization," IEEE Transactions on Evolutionary 
+  Computation, vol. 21, no. 6, pp. 898-913, 2017.
+Please cite the article(s) if you use the code.
 """
 
 import numpy as np
@@ -24,7 +34,21 @@ def define_problem(func_name, nf=2, ng=0, k=4, seed=1):
 def sphere(x, nf=1, ng=0):
     x = np.array(x)
     f = np.dot(x,x)
-    return f
+    return np.array([f])
+
+#======================================================================
+def Branin(x, nf=1, ng=0):
+    x = np.array(x)
+    x[0] = -5 + 15*x[0]
+    x[1] = 15*x[1]
+    a = 1
+    b = 5.1 / (4*np.pi**2)
+    c = 5/np.pi
+    r = 6
+    s = 10
+    t = 1/(8*np.pi)
+    f = a * (x[1] - b*x[0]**2 + c*x[0] - r)**2 + s*(1 - t)*np.cos(x[0]) + s
+    return np.array([f])
 
 #======================================================================
 def WFG1(x, nf=2, ng=0, k=1):

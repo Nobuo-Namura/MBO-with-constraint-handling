@@ -23,7 +23,10 @@ def generate_initial_sample(func_name, nx, nf, ng, ns, ntrial, xmin, xmax, curre
     df_samples = []
     for itrial in range(ntrial):
         print('trial '+ str(itrial+1))
-        x = lhs(nx, samples=ns, criterion='cm',iterations=1000)
+        if ns > 1:
+            x = lhs(nx, samples=ns, criterion='cm',iterations=1000)
+        elif ns == 1:
+            x = np.random.uniform(size=[ns,nx])
         x = xmin + x*(xmax - xmin)
         
         f = np.zeros((ns,nf+ng))

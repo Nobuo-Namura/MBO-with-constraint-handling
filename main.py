@@ -4,7 +4,7 @@ main.py
 Copyright (c) 2022 Nobuo Namura
 This code is released under the MIT License, see LICENSE.txt.
 
-This Python code is for multi-objective Bayesian optimization (MBO) with/without constraint handling.
+This Python code is for single/multi-objective Bayesian optimization (MBO) with/without constraint handling.
 MBO part is based on MBO-EPBII-SRVA and MBO-EPBII published in the following articles:
 ・N. Namura, "Surrogate-Assisted Reference Vector Adaptation to Various Pareto Front Shapes 
   for Many-Objective Bayesian Optimization," IEEE Congress on Evolutionary Computation, 
@@ -12,7 +12,7 @@ MBO part is based on MBO-EPBII-SRVA and MBO-EPBII published in the following art
 ・N. Namura, K. Shimoyama, and S. Obayashi, "Expected Improvement of Penalty-based Boundary 
   Intersection for Expensive Multiobjective Optimization," IEEE Transactions on Evolutionary 
   Computation, vol. 21, no. 6, pp. 898-913, 2017.
-Please cite the article(s) if you use the code.
+Please cite the article(s) if you use the MBO code.
 """
 
 import numpy as np
@@ -24,7 +24,7 @@ import time
 import shutil
 import os
 
-from mbo import MultiobjectiveBayesianOptiization
+from bo import BayesianOptimization
 import test_problem
 from initial_sample import generate_initial_sample
 import indicator
@@ -36,33 +36,33 @@ if __name__ == "__main__":
     func_name = 'SGM'                        # Test problem name in test_problem.py
     seed = 3                                 # Random seed for SGM function
     nx = 2                                   # Number of design variables (>=1)
-    nf = 2                                   # Number of objective functions (>=2)
-    ng = 1                                   # Number of constraint functions where g <= 0 is satisfied for feasible solutions
+    nf = 2                                   # Number of objective functions (>=1)
+    ng = 1                                   # Number of constraint functions where g <= 0 is satisfied for feasible solutions (>=0)
     k = 1                                    # Position paramete k in WFG problems
     xmin = np.full(nx, 0.0)                  # Lower bound of design sapce
     xmax = np.full(nx, 1.0)                  # Upper bound of design sapce
     MIN = np.full(nf, True)                  # True=Minimization, False=Maximization
-    #EGO
-    n_trial = 1                              # Number of independent run with different initial samples (>=1)
-    n_add = 5                                # Number of additional sample points at each iteration (>=1)
-    ns_max = 40                              # Number of maximum function evaluation
-    CRITERIA = 'EPBII'                       # EPBII or EIPBII
-    NOISE = np.full(nf+ng,False)             # Use True if functions are noisy (Griewank, Rastrigin, DTLZ1, etc.)
-    SRVA = True                              # True=surrogate-assisted reference vector adaptation, False=two-layered simplex latice-design
-    OPTIMIZER = 'NSGA3'                      # NSGA3 or NSGA2 for ideal and nadir point determination (and reference vector adaptation if VER2021=True)
-    #reference vector for EPBII
-    n_randvec = division.loc[nf, 'n']        # Number of adaptive reference vector (>=0)
-    nh = 0 #division.loc[nf, 'nh']           # Division number for the outer layer of the two-layered simplex latice-design (>=0)
-    nhin = 0 #division.loc[nf, 'nhin']       # Division number for the inner layer of the two-layered simplex latice-design (>=0)
-    #multi-objective evolutionary algorithm:
-    npop_ea = division.loc[nf, 'n_ea']       # Number of population for NSGA2
-    nh_ea = division.loc[nf, 'nh_ea']        # Division number for the outer layer of the two-layered simplex latice-design (>=0)
-    nhin_ea = division.loc[nf, 'nhin_ea']    # Division number for the inner layer of the two-layered simplex latice-design (>=0)
-    n_randvec_ea = 0                         # Number of random reference vector (>=0)
-    ngen_ea = 200                            # Number of generation
     #initial sample
     GENE = True                              # True=Generate initial sample with LHS, False=Read files
     ns = 30                                  # If GENE=True, number of initial sample points (>=2)
+    #Bayesian optimization
+    n_trial = 1                              # Number of independent run with different initial samples (>=1)
+    n_add = 5                                # Number of additional sample points at each iteration (>=1)
+    ns_max = 40                              # Number of maximum function evaluation
+    CRITERIA = 'EPBII'                       # EPBII or EIPBII for multi-objective problems, EI, GP-MI, Error, or Estimation for single-objective problems
+    NOISE = np.full(nf+ng,False)             # Use True if functions are noisy (Griewank, Rastrigin, DTLZ1, etc.)
+    #for multiobjective problems
+    SRVA = True                              # True=surrogate-assisted reference vector adaptation, False=two-layered simplex latice-design
+    OPTIMIZER = 'NSGA3'                      # NSGA3 or NSGA2 for ideal and nadir point determination (and reference vector adaptation if SRVA=True)
+    n_randvec = division.loc[nf, 'npop']     # Number of adaptive reference vector for EPBII/EIPBII (>=0)
+    nh = 0 #division.loc[nf, 'nh']           # Division number for the outer layer of the two-layered simplex latice-design for EPBII/EIPBII (>=0)
+    nhin = 0 #division.loc[nf, 'nhin']       # Division number for the inner layer of the two-layered simplex latice-design for EPBII/EIPBII (>=0)
+    #evolutionary algorithm
+    ngen_ea = 200                            # Number of generation
+    npop_ea = division.loc[nf, 'npop_ea']    # Number of population for NSGA2 for multi-objective problems and GA for single-objective problems
+    nh_ea = division.loc[nf, 'nh_ea']        # Division number for the outer layer of the two-layered simplex latice-design for NSGA3 (>=0)
+    nhin_ea = division.loc[nf, 'nhin_ea']    # Division number for the inner layer of the two-layered simplex latice-design for NSGA3 (>=0)
+    n_randvec_ea = 0                         # Number of random reference vector for NSGA3 (>=0)
     #others
     hv_ref = np.array([0.2, 0.15])           # reference point for hypervolume
     IGD_plus = True                          # True=IGD+, False=IGD
@@ -121,10 +121,7 @@ if __name__ == "__main__":
             FILEIN = True
         df_sample = pd.read_csv(f_sample)
         
-        gp = MultiobjectiveBayesianOptiization(df_sample, df_design_space, MIN, n_add, n_randvec, nh, nhin, \
-                                               n_randvec_ea, nh_ea, nhin_ea, ngen_ea, npop_ea, \
-                                               CRITERIA, OPTIMIZER, SRVA, pbi_theta=1.0)
-        
+        gp = BayesianOptimization(df_sample, df_design_space, MIN)        
         x_rmse = gp.xmin + (gp.xmax-gp.xmin)*x_rmse0
         max_iter = int((ns_max + (n_add - 1) - gp.ns)/n_add)
         rmse = np.zeros([max_iter, gp.nf + gp.ng])
@@ -158,7 +155,10 @@ if __name__ == "__main__":
             #Kriging and infill criterion
             theta = gp.training(theta0 = 3.0, npop = 500, ngen = 500, mingen=0, STOP=True, NOISE=NOISE)
             gp.construction(theta)
-            x_add, f_add_est, g_add_est = gp.maximize_epbii(PLOT=False, PRINT=True)
+            if gp.nf == 1:
+                x_add, f_add_est, g_add_est = gp.optimize_single_objective_problem(CRITERIA, n_add, npop_ea, ngen_ea, theta0=3.0, npop=100, ngen=100, mingen=0, STOP=True, PRINT=False, RETRAIN=True)
+            elif nf > 1:
+                x_add, f_add_est, g_add_est = gp.optimize_multiobjective_problem(CRITERIA, OPTIMIZER, SRVA, n_add, n_randvec, nh, nhin, n_randvec_ea, nh_ea, nhin_ea, npop_ea, ngen_ea, pbi_theta=1.0, PLOT=False, PRINT=True)
             times.append(time.time())
 
             #RMSE
@@ -167,8 +167,8 @@ if __name__ == "__main__":
                 rmse[itr, ifg] = indicator.rmse_history(x_rmse, problem, krig, ifg)
 
             #Add sample points
-            f_add = np.array([problem(x_add[i]) for i in range(len(x_add))])
-            gp.add_sample(x_add, f_add)
+            fg_add = np.array([problem(x_add[i]) for i in range(len(x_add))])
+            gp.add_sample(x_add, fg_add[:,:gp.nf], fg_add[:,gp.nf:])
             
             #Indicators and file output
             with open(f_indicator, 'a') as file:

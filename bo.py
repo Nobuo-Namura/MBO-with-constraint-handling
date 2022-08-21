@@ -28,6 +28,7 @@ from pyDOE2 import lhs
 from mpl_toolkits.mplot3d import Axes3D
 
 from pymoo.algorithms.soo.nonconvex.cmaes import CMAES
+from pymoo.algorithms.soo.nonconvex.ga import GA
 from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.algorithms.moo.nsga3 import NSGA3
 from pymoo.factory import get_sampling, get_crossover, get_mutation
@@ -40,35 +41,22 @@ import test_problem
 from initial_sample import generate_initial_sample
 
 #======================================================================
-class MultiobjectiveBayesianOptiization(GaussianProcess):
+class BayesianOptimization(GaussianProcess):
 #======================================================================
-    def __init__(self, df_sample, df_design_space, \
-                 MIN=[True, True], n_add = 5, n_randvec=0, nh=10, nhin=0, \
-                 n_randvec_ea=0, nh_ea=20, nhin_ea=0, ngen_ea=200, npop_ea=100, \
-                 CRITERIA='EPBII', OPTIMIZER='NSGA3', SRVA=True, pbi_theta=1.0):
+    def __init__(self, df_sample, df_design_space, MIN=[True, True], dist_threshold=1.0e-8):
         super().__init__(df_sample, df_design_space)
-        self.SRVA = SRVA
-        self.OPTIMIZER = OPTIMIZER
         self.MIN = np.array(MIN)
-        self.CRITERIA = CRITERIA
-        self.n_add = n_add
-        self.pbi_theta =  pbi_theta
-        self.n_randvec = n_randvec
-        self.nh = nh
-        self.nhin = nhin
-        self.n_randvec_ea = n_randvec_ea
-        self.nh_ea = nh_ea
-        self.nhin_ea = nhin_ea
-        self.ngen_ea = ngen_ea
-        self.npop_ea = npop_ea
+        self.delta_mi = 1.0e-6
+        self.sqrt_alpha = np.sqrt(np.log(2.0/self.delta_mi))
+        self.gamma_mi = np.zeros(self.nf)
         self.nrand = 100
         self.epsilon = 0.01
         self.tiny = 1.0e-20
-        self.dist_threshold = 1.0e-8
+        self.dist_threshold = dist_threshold
         self.multiplier = 10
         self.uni_rand = lhs(self.nf, samples=self.nrand, criterion='cm',iterations=100)
-        self._infill_preprocess(PLOT=False)
 
+# functions for MOP
 #======================================================================
     def _estimate_fg_as_min(self, xs, nfg):
         nfgs = np.hstack([nfg, np.arange(self.nf, self.nf + self.ng)])
@@ -77,13 +65,8 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
         return f
 
 #======================================================================
-    def _estimate_multiobjective_fg(self, xs):
-        f = np.array([self.estimation(xs, nfg=i)[0] for i in range(self.nf + self.ng)])
-        return f
-
-#======================================================================
     def _estimate_multiobjective_fg_as_min(self, xs):
-        f = self._estimate_multiobjective_fg(xs)
+        f = self.estimate_multiobjective_fg(xs)
         f[:self.nf] *= np.where(self.MIN, 1.0, -1.0)
         return f
 
@@ -180,10 +163,22 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
         return ref_theta, normalized_refvec_distance, dmin
 
 #======================================================================
-    def maximize_epbii(self, PLOT=False, PRINT=True):
+    def optimize_multiobjective_problem(self, CRITERIA='EPBII', OPTIMIZER='NSGA3', SRVA=True, \
+                                         n_add = 5, n_randvec=40, nh=0, nhin=0, \
+                                         n_randvec_ea=0, nh_ea=20, nhin_ea=0, npop_ea=100, ngen_ea=200, \
+                                         pbi_theta=1.0, PLOT=False, PRINT=True):
+        self.CRITERIA = CRITERIA
+        self.n_add = n_add
+        self.pbi_theta =  pbi_theta
+        self.n_randvec, self.nh, self.nhin = n_randvec, nh, nhin
+        
         if self.CRITERIA == 'EPBII' or self.CRITERIA == 'EIPBII':
-            self.utopia_nadir_on_gp(PLOT=PLOT, PRINT=PRINT)
-            self.reference_pbi()
+            if SRVA:
+                self.nref = self.n_randvec
+            else:
+                self._infill_preprocess(PLOT=False)
+            self._utopia_nadir_on_gp(OPTIMIZER, SRVA, n_randvec_ea, nh_ea, nhin_ea, npop_ea, ngen_ea, PLOT, PRINT)
+            self._reference_pbi()
             
             # MOEA/D to maximize EPBII for all reference vectors
             f_opt0 = (self.f_opt - self.utopia)/(self.nadir - self.utopia)
@@ -194,11 +189,11 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
                 i_opt = np.argmax(np.abs(np.dot(f_opt0/np.reshape(np.linalg.norm(f_opt0,axis=1),[-1,1]), self.refvec[iref,:])))
                 x_init[iref,:] = self.x_opt[i_opt,:]
             if self.CRITERIA == 'EPBII':
-                func = self.evaluate_epbii
+                self.acquisition_function = self._evaluate_epbii
             else:
-                func = self.evaluate_eipbii
+                self.acquisition_function = self._evaluate_eipbii
             print(self.CRITERIA + ' maximization with MOEA/D')
-            moead = MOEAD(self.refvec, func, self.xmin, self.xmax, ngen=50, PRINT=PRINT, HOTSTART=True, \
+            moead = MOEAD(self.refvec, self.acquisition_function, self.xmin, self.xmax, ngen=50, PRINT=PRINT, HOTSTART=True, \
                           nghbr=20, factor=1.0, pcross=1.0, pmut=1.0/self.nx, eta_c=10.0, eta_m=20.0)
             self.epbii, self.x_candidate = moead.optimize(x_init=x_init)
             self.f_candidate = np.zeros([self.nref,self.nf])
@@ -257,10 +252,10 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
             return x_add, f_add, g_add
 
 #======================================================================
-    def utopia_nadir_on_gp(self, PLOT=False, PRINT=True):
+    def _utopia_nadir_on_gp(self, OPTIMIZER='NSGA3', SRVA=True, n_randvec_ea=0, nh_ea=20, nhin_ea=0, npop_ea=100, ngen_ea=200, PLOT=False, PRINT=True):
         self.utopia = np.zeros(self.nf)
         self.nadir = np.ones(self.nf)
-        self.f_opt, self.g_opt, self.x_opt = self._multiobjective_optimization_on_gp(PLOT=False, PRINT=PRINT)
+        self.f_opt, self.g_opt, self.x_opt = self._multiobjective_optimization_on_gp(OPTIMIZER, n_randvec_ea, nh_ea, nhin_ea, npop_ea, ngen_ea, PLOT=False, PRINT=PRINT)
         f_sga, g_sga, x_sga = self._single_objective_optimization_on_gp()
         self.f_opt = np.vstack([self.f_opt, f_sga])
         self.g_opt = np.vstack([self.g_opt, g_sga])
@@ -270,7 +265,7 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
             self.f_opt = self.f_opt[rank==1.0]
             self.x_opt = self.x_opt[rank==1.0]
             self.f_ref, f_epsilon = self._select_from_estimation(self.f_opt, self.x_opt)
-            if self.SRVA:
+            if SRVA:
                 self.refvec, self.refvec_cluster, self.normalized_refvec_distance, self.ref_theta, self.dmin \
                 = self._vector_adaptation(self.f_opt, self.f_ref, f_epsilon, PLOT)
         elif len(self.f) >= self.nf:
@@ -290,7 +285,7 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
         return
 
 #======================================================================
-    def _multiobjective_optimization_on_gp(self, PLOT=False, PRINT=True):
+    def _multiobjective_optimization_on_gp(self, OPTIMIZER='NSGA3', n_randvec_ea=0, nh_ea=20, nhin_ea=0, npop_ea=100, ngen_ea=200, PLOT=False, PRINT=True):
         class MOProblem(ElementwiseProblem):
             def __init__(self, func, nx, nf, ng, xmin, xmax):
                 self.func = func
@@ -303,8 +298,8 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
 
         print('Multi-objective optimization on the Kriging models')
         problem = MOProblem(self._estimate_multiobjective_fg_as_min, self.nx, self.nf, self.ng, self.xmin, self.xmax)
-        if self.OPTIMIZER=='NSGA3':
-            nref, refvec_on_hp = self.generate_refvec(self.nf, self.n_randvec_ea, self.nh_ea, self.nhin_ea, multiplier=10)
+        if OPTIMIZER=='NSGA3':
+            nref, refvec_on_hp = self.generate_refvec(self.nf, n_randvec_ea, nh_ea, nhin_ea, self.multiplier)
             algorithm = NSGA3(pop_size=nref, ref_dirs=refvec_on_hp)
         else:
             algorithm = NSGA2(pop_size=self.npop_ea, n_offsprings=self.npop_ea, 
@@ -312,7 +307,7 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
                               crossover=get_crossover("real_sbx", prob=0.9, eta=10), 
                               mutation=get_mutation("real_pm", eta=20), 
                               eliminate_duplicates=True)
-        res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_gen', self.ngen_ea), ave_history=False, verbose=False)
+        res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_gen', ngen_ea), ave_history=False, verbose=False)
         return np.where(self.MIN, 1.0, -1.0)*res.F, res.G, res.X
 
 #======================================================================
@@ -331,14 +326,15 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
         g_opt = np.zeros([self.nf, self.ng])
         for iobj in range(self.nf):
             print('Single objective optimization for the '+str(iobj+1)+'-th objective function')
-            # Use CMAES in pymoo for constraint handling
             func = functools.partial(self._estimate_fg_as_min, nfg=iobj)
             problem = SOProblem(func, self.nx, self.ng, self.xmin, self.xmax)
-            algorithm = CMAES(x0=np.random.random(problem.n_var))
-            res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_evals', 10000), ave_history=False, verbose=False)
+#            algorithm = CMAES(x0=np.random.random(problem.n_var))
+#            res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_evals', 10000), ave_history=False, verbose=False)
+            algorithm = GA(pop_size=100, eliminate_duplicates=True)
+            res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_gen', 100), ave_history=False, verbose=False)
             x_opt[iobj,:] = res.X
         for iobj in range(self.nf):
-            fg_opt = self._estimate_multiobjective_fg(x_opt[iobj,:])
+            fg_opt = self.estimate_multiobjective_fg(x_opt[iobj,:])
             f_opt[iobj,:] = fg_opt[:self.nf]
             g_opt[iobj,:] = fg_opt[self.nf:]
         return f_opt, g_opt, x_opt
@@ -464,7 +460,7 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
         return f_ref
 
 #======================================================================
-    def reference_pbi(self):
+    def _reference_pbi(self):
         rank = self.pareto_ranking(self.f, self.g)
         f0 = (self.f - self.utopia)/(self.nadir - self.utopia)
         sign = 1.0
@@ -526,7 +522,7 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
         return
 
 #======================================================================
-    def evaluate_epbii(self, xs, kref):
+    def _evaluate_epbii(self, xs, kref):
         f = np.zeros(self.nf)
         s = np.zeros(self.nf)
         z = np.zeros(self.nf)
@@ -547,7 +543,7 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
         else:
             fp0 = norm.ppf(self.uni_rand, loc=f0, scale=s0)
             pbis, d1s, d2s = self._evaluate_pbis(z, fp0, self.refvec[kref,:], self.pbi_theta)
-            pbiis = np.max(np.vstack([self.pbiref[kref]-pbis, np.zeros(self.nrand)]),axis=0)
+            pbiis = np.where(self.pbiref[kref]>pbis, self.pbiref[kref]-pbis, 0)
             epbii = np.mean(pbiis)*p_const
             #Accelerate convergence
             if epbii <= 0.0:
@@ -556,7 +552,7 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
         return epbii
 
 #======================================================================
-    def evaluate_eipbii(self, xs, kref):
+    def _evaluate_eipbii(self, xs, kref):
         f = np.zeros(self.nf)
         s = np.zeros(self.nf)
         z = np.zeros(self.nf)
@@ -577,7 +573,7 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
         else:
             fp0 = norm.ppf(self.uni_rand, loc=f0, scale=s0)
             ipbis, d1s, d2s = self._evaluate_pbis(z, fp0, self.refvec[kref,:], self.pbi_theta, sign=-1.0)
-            ipbiis = np.max(np.vstack([ipbis-self.pbiref[kref], np.zeros(self.nrand)]),axis=0)
+            ipbiis = np.where(ipbis>self.pbiref[kref], ipbis-self.pbiref[kref], 0)
             iepbii = np.mean(ipbiis)*p_const
             #Accelerate convergence
             if iepbii <= 0.0:
@@ -625,76 +621,232 @@ class MultiobjectiveBayesianOptiization(GaussianProcess):
         rank = np.where(rank>0, rank, np.max(rank)+1)
         return rank
 
+# functions for SOP
+#======================================================================
+    def _estimation_as_min(self, xs, nfg=0):
+        f, s = self.estimation(xs, nfg)
+        f *= np.where(self.MIN[nfg], 1.0, -1.0)
+        
+        p_const = 1.0
+        for i in range(self.ng):
+            g, sg = self.estimation(xs, nfg=self.nf+i)
+            p_const *= self.probability_of_improvement(0.0, g, sg, MIN=True)
+        return f*p_const
+
+#======================================================================
+    def _error_as_min(self, xs, nfg=0):
+        f, s = self.estimation(xs, nfg)
+        
+        p_const = 1.0
+        for i in range(self.ng):
+            g, sg = self.estimation(xs, nfg=self.nf+i)
+            p_const *= self.probability_of_improvement(0.0, g, sg, MIN=True)
+        return -s*p_const
+
+#======================================================================
+    def _ei_as_min(self, xs, fref=0, nfg=0):
+        f, s = self.estimation(xs, nfg)
+        ei = self.expected_improvement(fref, f, s, MIN=self.MIN[nfg])
+        
+        p_const = 1.0
+        for i in range(self.ng):
+            g, sg = self.estimation(xs, nfg=self.nf+i)
+            p_const *= self.probability_of_improvement(0.0, g, sg, MIN=True)
+        return -ei*p_const
+
+#======================================================================
+    def _mi_as_min(self, xs, nfg=-1):
+        f, s = self.estimation(xs, nfg)
+        s2 = s**2.0
+        phi = self.sqrt_alpha*(np.sqrt(s2 + self.gamma_mi[nfg]) - np.sqrt(self.gamma_mi[nfg]))
+        mi = f + np.where(self.MIN[nfg], -1.0, 1.0)*phi
+        if not self.MIN[nfg]:
+            mi *= -1
+        
+        p_const = 1.0
+        for i in range(self.ng):
+            g, sg = self.estimation(xs, nfg=self.nf+i)
+            p_const *= self.probability_of_improvement(0.0, g, sg, MIN=True)
+        return mi*p_const
+
+#======================================================================
+    def _optimize_sop(self, npop=100, ngen=100, nfg=0, PRINT=False):
+        
+        class SOProblem(ElementwiseProblem):
+            def __init__(self, func, nx, xmin, xmax):
+                self.func = func
+                super().__init__(n_var=nx, n_obj=1, n_constr=0, xl=xmin, xu=xmax)
+            def _evaluate(self, x, out, *args, **kwargs):
+                out["F"] = self.func(x)
+                
+        if self.CRITERIA == 'Estimation':
+            self.acquisition_function = functools.partial(self._estimation_as_min, nfg=nfg)
+        elif self.CRITERIA == 'Error':
+            self.acquisition_function = functools.partial(self._error_as_min, nfg=nfg)
+        elif self.CRITERIA == 'EI':
+            mask = np.all(self.g<=0, axis=1)
+            if self.MIN[nfg]:
+                if mask.sum()>0:
+                    fref = self.f[mask, nfg].min()
+                else:
+                    fref = self.f[:, nfg].max()
+            else:
+                if mask.sum()>0:
+                    fref = self.f[mask, nfg].max()
+                else:
+                    fref = self.f[:, nfg].min()
+            self.acquisition_function = functools.partial(self._ei_as_min, fref=fref, nfg=nfg)
+        elif self.CRITERIA == 'GP-MI':
+            self.acquisition_function = functools.partial(self._mi_as_min, nfg=nfg)
+        else:
+            self.acquisition_function = functools.partial(self._error_as_min, nfg=nfg)
+        
+        problem = SOProblem(self.acquisition_function, self.nx, self.xmin, self.xmax)
+#        algorithm = CMAES(x0=np.random.random(problem.n_var))
+#        res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_evals', n_eval), ave_history=False, verbose=PRINT)
+        algorithm = GA(pop_size=npop, eliminate_duplicates=True)
+        res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_gen', ngen), ave_history=False, verbose=PRINT)
+        
+        x_opt = res.X
+        fg_opt = self.estimate_multiobjective_fg(x_opt)
+        x_opt = x_opt.reshape([1,len(x_opt)])
+        fg_opt = fg_opt.reshape([1,len(fg_opt)])
+
+        return x_opt, fg_opt[:,:self.nf], fg_opt[:,self.nf:]
+
+#======================================================================
+    def optimize_single_objective_problem(self, CRITERIA='Error', n_add=1, npop_ea=500, ngen_ea=100, nfg=0, \
+                                          theta0 = 3.0, npop = 100, ngen = 100, mingen=0, STOP=True, \
+                                          PRINT=False, RETRAIN=True):
+        self.CRITERIA = CRITERIA
+        self.n_add = n_add
+        NOISE = np.where(self.theta[:,-1]>0, True, False)
+        x_opt, f_opt, g_opt = self._optimize_sop(npop_ea, ngen_ea, nfg, PRINT)
+        if distance.cdist(self.x, x_opt).min() < self.dist_threshold:
+            print('selected x is too close to stored ones')
+            x_opt, f_opt, g_opt = self._optimize_sop(npop_ea, ngen_ea, nfg, 'Error', PRINT)
+        x_add = x_opt.copy()
+        f, s = self.estimation(x_opt[0], nfg)
+        self.gamma_mi[nfg] += s**2.0
+        if self.n_add > 1:
+            theta = self.theta.copy()
+            theta_saved = theta.copy()
+            for i_add in range(1, self.n_add):
+                self.add_sample(x_opt, f_opt, g_opt)
+                if RETRAIN:
+                    theta = self.training(theta0, npop, ngen, mingen, STOP, NOISE, PRINT)
+                self.construction(theta)
+                x_opt, f_opt, g_opt = self._optimize_sop(npop_ea, ngen_ea, nfg, PRINT)
+                if distance.cdist(self.x, x_opt).min() < self.dist_threshold:
+                    print('selected x is too close to stored ones')
+                    x_opt, f_opt, g_opt = self._optimize_sop(npop_ea, ngen_ea, nfg, 'Error', PRINT)
+                x_add = np.vstack([x_add, x_opt])
+                f, s = self.estimation(x_opt[0], nfg)
+                self.gamma_mi[nfg] += s**2.0
+            self.delete_sample(self.n_add-1)
+            self.construction(theta_saved)
+        fg_add = np.array([self.estimate_multiobjective_fg(x_add[i,:]) for i in range(len(x_add[:,0]))])
+
+        return x_add, fg_add[:, :self.nf], fg_add[:, self.nf:]
+
 #======================================================================
 if __name__ == "__main__":
-        
+    
+    division = pd.read_csv('reference_vector_division.csv', index_col=0)
     """=== Edit from here ==========================================="""
-    func_name = 'SGM'            # Test problem name in test_problem.py
-    seed = 3                     # Random seed for SGM function
-    nx = 2                       # Number of design variables
-    nf = 2                       # Number of objective functions
-    ng = 1                       # Number of constraint functions where g <= 0 is satisfied for feasible solutions
-    k = 1                        # Position paramete k in WFG problems
-    ns = 30                      # Number of initial sample points when GENE=True
-    MIN = np.full(nf,True)       # Minimization: True, Maximization: False
-    NOISE = np.full(nf+ng,False) # Use True if functions are noisy (Griewank, Rastrigin, DTLZ1, etc.)
-    xmin = np.full(nx, 0.0)      # Lower bound of design sapce
-    xmax = np.full(nx, 1.0)      # Upper bound of design sapce
-    SRVA = True                  # True=surrogate-assisted reference vector adaptation, False=two-layered simplex latice-design
-    n_randvec = 40               # Number of adaptive reference vector (>=0)
-    nh = 0                       # Division number for the outer layer of the two-layered simplex latice-design (>=0)
-    nhin = 0                     # Division number for the inner layer of the two-layered simplex latice-design (>=0)
+    func_name = 'SGM'                       # Test problem name in test_problem.py
+    seed = 3                                # Random seed for SGM function
+    nx = 2                                  # Number of design variables
+    nf = 2                                  # Number of objective functions
+    ng = 1                                  # Number of constraint functions where g <= 0 is satisfied for feasible solutions
+    k = 1                                   # Position paramete k in WFG problems
+    ns = 30                                 # Number of initial sample points
+    n_add = 5                               # Number of additional sample points at each iteration
+    ns_max = 40                             # Number of maximum function evaluation
+    CRITERIA = 'EPBII'                      # EPBII or EIPBII for multi-objective problems, EI, GP-MI, Error, or Estimation for single-objective problems
+    MIN = np.full(nf,True)                  # Minimization: True, Maximization: False
+    NOISE = np.full(nf+ng,False)            # Use True if functions are noisy (Griewank, Rastrigin, DTLZ1, etc.)
+    xmin = np.full(nx, 0.0)                 # Lower bound of design sapce
+    xmax = np.full(nx, 1.0)                 # Upper bound of design sapce
+    SRVA = True                             # True=surrogate-assisted reference vector adaptation, False=two-layered simplex latice-design
+    n_randvec = division.loc[nf, 'npop']    # Number of adaptive(SRVA=True) or random(SRVA=False) reference vector (>=0)
+    ngen_ea = 200                           # Number of generation
+    npop_ea = division.loc[nf, 'npop_ea']   # Number of population for GA in single-objective problems
+    nh_ea = division.loc[nf, 'nh_ea']       # Division number for the outer layer of the two-layered simplex latice-design for NSGA3 in multi-objective problems (>=0)
+    nhin_ea = division.loc[nf, 'nhin_ea']   # Division number for the inner layer of the two-layered simplex latice-design for NSGA3 in multi-objective problems (>=0)
     current_dir = '.'
     fname_design_space = 'design_space'
     fname_sample = 'sample'
     """=== Edit End ================================================="""
 
-
     func = test_problem.define_problem(func_name, nf, ng, k, seed)
     df_samples, df_design_space = generate_initial_sample(func_name, nx, nf, ng, ns, 1, xmin, xmax, current_dir, fname_design_space, fname_sample, k=k, seed=seed, FILE=False)
     df_sample = df_samples[0]
     
-    gp = MultiobjectiveBayesianOptiization(df_sample, df_design_space, MIN=MIN, n_add=1, n_randvec=n_randvec, nh=nh, nhin=nhin, SRVA=SRVA)
-    theta = gp.training(theta0 = 3.0, npop = 500, ngen = 500, mingen=0, STOP=True, NOISE=NOISE)
-    gp.construction(theta)
-    gp.utopia_nadir_on_gp(PLOT=False, PRINT=False)
-    gp.reference_pbi()
-    
+    gp = BayesianOptimization(df_sample, df_design_space, MIN=MIN)
+    max_iter = int((ns_max + (n_add - 1) - ns)/n_add)
+    for itr in range(max_iter):
+        print('=== Iteration = '+str(itr)+', Number of sample = '+str(gp.ns)+' ======================')
+        theta = gp.training(theta0 = 3.0, npop = 500, ngen = 500, mingen=0, STOP=True, NOISE=NOISE)
+        gp.construction(theta)
+        if nf == 1:
+            x_add, f_add_est, g_add_est = gp.optimize_single_objective_problem(CRITERIA=CRITERIA, n_add=n_add, npop_ea=npop_ea, ngen_ea=ngen_ea, PRINT=False, RETRAIN=True, theta0=3.0, npop=100, ngen=100, mingen=0, STOP=True)
+        elif nf > 1:
+            x_add, f_add_est, g_add_est = gp.optimize_multiobjective_problem(CRITERIA=CRITERIA, n_add=n_add, n_randvec=n_randvec, nh_ea=nh_ea, nhin_ea=nhin_ea, ngen_ea=ngen_ea, PLOT=False, PRINT=True)
+        fg_add = np.array([func(x_add[i]) for i in range(len(x_add))])
+        if itr < max_iter-1:
+            gp.add_sample(x_add, fg_add[:,:gp.nf], fg_add[:,gp.nf:])
+            
+    print('Visualization')
     if nx == 2:
-        x = gp.xmin[0]+np.arange(0., 1.01, 0.01)*(gp.xmax[0]-gp.xmin[0])
-        y = gp.xmin[1]+np.arange(0., 1.01, 0.01)*(gp.xmax[1]-gp.xmin[1])
+        iref = np.random.randint(0, gp.nref)
+        x = gp.xmin[0]+np.linspace(0, 1, 101)*(gp.xmax[0]-gp.xmin[0])
+        y = gp.xmin[1]+np.linspace(0, 1, 101)*(gp.xmax[1]-gp.xmin[1])
         X, Y = np.meshgrid(x, y)
-        F = X.copy()
-        S = X.copy()
-        EI = X.copy()
+        F = np.zeros(np.shape(X))
+        S = np.zeros(np.shape(X))
+        EI = np.zeros(np.shape(X))
         Fs = []
         for k in range(nf+ng):
             for i in range(len(X[:,0])):
                 for j in range(len(X[0,:])):
                     F[i,j], S[i,j] = gp.estimation(np.array([X[i,j],Y[i,j]]), nfg=k)
                     if k==0:
-                        EI[i,j] = gp.evaluate_epbii(np.array([X[i,j],Y[i,j]]), 0)
+                        if CRITERIA=='EPBII' or CRITERIA=='EIPBII':
+                            EI[i,j] = gp.acquisition_function(np.array([X[i,j],Y[i,j]]), iref)
+                        elif CRITERIA=='EI' or CRITERIA=='Error':
+                            EI[i,j] = -1*gp.acquisition_function(np.array([X[i,j],Y[i,j]]))
+                        elif CRITERIA=='GP-MI':
+                            EI[i,j] = np.where(MIN, 1, -1)*gp.acquisition_function(np.array([X[i,j],Y[i,j]]))
             Fs.append(F.copy())
-            plt.figure('objective function '+str(k+1))
-            plt.plot(gp.x[:,0],gp.x[:,1],'o',c='black')
-            plt.pcolor(X,Y,F,cmap='jet',shading='auto')
+            plt.figure('objective/constraint function '+str(k+1))
+            plt.scatter(gp.x[:ns,0], gp.x[:ns,1], c='black', zorder=3)
+            plt.scatter(gp.x[ns:,0], gp.x[ns:,1], c='white', edgecolor='black', zorder=4)
+            plt.scatter(x_add[:,0], x_add[:,1], marker='*', s=100, c='white', edgecolor='black', zorder=5)
+            plt.pcolor(X, Y, F, cmap='jet', shading='auto', zorder=1)
             plt.colorbar()
-            plt.contour(X,Y,F,40,colors='black',linestyles='solid')
+            plt.contour(X, Y, F, 40, colors='black', linestyles='solid', linewidths=0.1, zorder=2)
             
-            plt.figure('estimation error '+str(k+1))
-            plt.plot(gp.x[:,0],gp.x[:,1],'o',c='black')
-            plt.pcolor(X,Y,S,cmap='jet',shading='auto')
-            plt.colorbar()
-            plt.contour(X,Y,S,40,colors='black',linestyles='solid')
-            
-        plt.figure('epbii')
-        plt.plot(gp.x[:,0],gp.x[:,1],'o',c='black')
-        plt.pcolor(X,Y,EI,cmap='jet',shading='auto',vmin=0)
-        plt.colorbar()
-    if nf ==2:
+            if k==0:
+                plt.figure('acquisition function')
+                plt.scatter(gp.x[:ns,0], gp.x[:ns,1], c='black', zorder=2)
+                plt.scatter(gp.x[ns:,0], gp.x[ns:,1], c='white', edgecolor='black', zorder=3)
+                plt.scatter(x_add[:,0], x_add[:,1], marker='*', s=100, c='white', edgecolor='black', zorder=4)
+                plt.pcolor(X, Y, EI, cmap='jet', shading='auto', vmin=0, zorder=1)
+                plt.colorbar()
+
+    if nf==2:
         plt.figure('objective_space')
-#        plt.scatter(gp.f[:,0],gp.f[:,1],'o',c='black')
-        plt.scatter(Fs[0].reshape(len(Fs[0][:,0])*len(Fs[0][0,:])), Fs[1].reshape(len(Fs[1][:,0])*len(Fs[1][0,:])), c=EI.reshape(len(EI[:,0])*len(EI[0,:])), cmap='jet', vmin=0)
+        plt.scatter(gp.f[:ns,0], gp.f[:ns,1], c='black', zorder=1)
+        plt.scatter(gp.f[ns:,0], gp.f[ns:,1], c='white', edgecolor='black', zorder=2)
+        plt.scatter(fg_add[:,0], fg_add[:,1], marker='*', s=100, c='white', edgecolor='black', zorder=3)
+        plt.scatter(Fs[0].reshape(len(Fs[0][:,0])*len(Fs[0][0,:])), Fs[1].reshape(len(Fs[1][:,0])*len(Fs[1][0,:])), c=EI.reshape(len(EI[:,0])*len(EI[0,:])), cmap='jet', vmin=0, alpha=0.2, zorder=0)
+        if CRITERIA=='EPBII':
+            refvec = gp.utopia + (gp.nadir - gp.utopia)*gp.refvec[iref]
+            plt.plot([gp.utopia[0], refvec[0]], [gp.utopia[1], refvec[1]], c='black', linestyle='dashed')
+        elif CRITERIA=='EIPBII':
+            refvec = gp.nadir + (gp.nadir - gp.utopia)*gp.refvec[iref]
+            plt.plot([gp.nadir[0], refvec[0]], [gp.nadir[1], refvec[1]], c='white', linestyle='dashed')
         plt.colorbar()
     
     n_valid = 10000
@@ -711,7 +863,7 @@ if __name__ == "__main__":
         delt = fs[:,0]-fs[:,1]
         R2[i] = 1-(np.dot(delt,delt)/float(n_valid))/np.var(fs[:,1])
         plt.figure('cross validation for objective function '+str(i+1))
-        plt.plot(fs[:,1], fs[:,0], '.')
+        plt.scatter(fs[:,1], fs[:,0], c='none', edgecolor='blue', alpha=0.2)
         linear = [fs.min(), fs.max()]
         plt.plot(linear, linear, c='black')
     print(R2)

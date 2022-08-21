@@ -47,6 +47,7 @@ class GaussianProcess:
 #======================================================================
     def training(self, theta0 = 3.0, npop = 500, ngen = 500, mingen = 0, \
                  STOP=True, NOISE=[False], PRINT=True):
+        self.NOISE = NOISE
         self.theta = np.zeros((self.nf+self.ng, self.nx+1))
         func = self._likelihood
         getcontext().prec = 28#56
@@ -151,6 +152,11 @@ class GaussianProcess:
         return self.estimation(xs, nfg=nfg)[1]
 
 #======================================================================
+    def estimate_multiobjective_fg(self, xs):
+        f = np.array([self.estimate_f(xs, nfg=i) for i in range(self.nf + self.ng)])
+        return f
+
+#======================================================================
     def probability_of_improvement(self, fref, f, s, MIN=True):
         if s > 0.0:
             y = np.where(MIN, 1.0, -1.0)*(fref - f)/s
@@ -175,17 +181,28 @@ class GaussianProcess:
         return ei
 
 #======================================================================
-    def add_sample(self, x_add, fg_add):
+    def add_sample(self, x_add, f_add, g_add):
         self.ns += len(x_add)
         if x_add.ndim == 1:
             x_add = np.reshape(x_add, [1,len(x_add)])
-        if fg_add.ndim == 1:
-            fg_add = np.reshape(fg_add, [1,len(fg_add)])
+        if f_add.ndim == 1:
+            f_add = np.reshape(f_add, [1,len(f_add)])
+        if g_add.ndim == 1:
+            g_add = np.reshape(g_add, [1,len(g_add)])
         self.x = np.vstack([self.x, x_add])
         x0_add = (x_add - self.xmin)/(self.xmax - self.xmin)
         self.x0 = np.vstack([self.x0, x0_add])
-        self.f = np.vstack([self.f, fg_add[:,:self.nf]])
-        self.g = np.vstack([self.g, fg_add[:,self.nf:]])
+        self.f = np.vstack([self.f, f_add])
+        self.g = np.vstack([self.g, g_add])
+        return
+
+#======================================================================
+    def delete_sample(self, n_del):
+        self.ns -= n_del
+        self.x = self.x[:-n_del, :]
+        self.x0 = self.x0[:-n_del, :]
+        self.f = self.f[:-n_del, :]
+        self.g = self.g[:-n_del, :]
         return
 
 #======================================================================
