@@ -22,6 +22,7 @@ Please cite the article(s) if you use the MBO code.
 * pymoo
 * pyDOE2
 * optproblems
+* diversipy
 
 ## Contact
 Nobuo Namura (nobuo.namura.gp@gmail.com)

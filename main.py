@@ -77,8 +77,11 @@ if __name__ == "__main__":
     
     #Initial sample
     problem = test_problem.define_problem(func_name, nf, ng, k, seed)
-    df_samples, df_design_space = generate_initial_sample(func_name, nx, nf, ng, ns, n_trial, xmin, xmax, current_dir, fname_design_space, fname_sample, k=k, seed=seed, FILE=True)
-
+    if GENE:
+        df_samples, df_design_space = generate_initial_sample(func_name, nx, nf, ng, ns, n_trial, xmin, xmax, current_dir, fname_design_space, fname_sample, k=k, seed=seed, FILE=True)
+    else:
+        df_design_space = pd.read_csv(current_dir + '/' + fname_design_space + '.csv')
+    
     if func_name == 'SGM':
         file = path_IGD_ref + '/' + func_name + str(seed) + 'x' + str(nx) +'f' + str(nf) + '.csv'
         if os.path.exists(file):

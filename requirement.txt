@@ -6,3 +6,4 @@ scikit-learn
 pymoo
 pyDOE2
 optproblems
+diversipy
