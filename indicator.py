@@ -7,7 +7,7 @@ This code is released under the MIT License.
 
 import numpy as np
 from scipy.spatial import distance
-from pymoo.factory import get_performance_indicator
+from pymoo.indicators.hv import HV
 
 #======================================================================
 def rmse_history(x_rmse, problem, func, nfg=0):
@@ -34,6 +34,6 @@ def igd_history(f, igd_ref, plus=False, MIN=[]):
 def hv_history(f, hv_ref, MIN=[]):
     f_min = np.where(MIN, 1.0, -1.0)*f
     ref_min = np.where(MIN, 1.0, -1.0)*hv_ref
-    hv = get_performance_indicator("hv", ref_point=ref_min)
-    hv_min = hv.do(f_min)
+    hv = HV(ref_point=ref_min)
+    hv_min = hv(f_min)
     return hv_min
