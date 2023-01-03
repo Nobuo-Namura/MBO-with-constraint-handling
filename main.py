@@ -156,7 +156,8 @@ if __name__ == "__main__":
             print('=== Iteration = '+str(itr)+', Number of sample = '+str(gp.ns)+' ======================')
             
             #Kriging and infill criterion
-            theta = gp.training(theta0 = 3.0, npop = 500, ngen = 500, mingen=0, STOP=True, NOISE=NOISE)
+            theta = gp.training(theta0 = 3.0, npop = 100, ngen = 100, mingen=0, STOP=True, NOISE=NOISE) # reasonable
+            # theta = gp.training(theta0 = 3.0, npop = 500, ngen = 500, mingen=0, STOP=True, NOISE=NOISE) # setting used in the papers
             gp.construction(theta)
             if gp.nf == 1:
                 x_add, f_add_est, g_add_est = gp.optimize_single_objective_problem(CRITERIA, n_add, npop_ea, ngen_ea, theta0=3.0, npop=100, ngen=100, mingen=0, STOP=True, PRINT=False, RETRAIN=True)

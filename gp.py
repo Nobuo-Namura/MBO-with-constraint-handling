@@ -90,7 +90,7 @@ class GaussianProcess:
         if self.nx < len(theta):
             R += np.diag(np.full(len(R),theta[-1]))
         ones = np.ones(self.ns)
-        Ri = linalg.lu_factor(R) #cholesky and cho_factor are not suitable; ldl is possible
+        Ri = linalg.lu_factor(R) #cholesky and cho_factor are not suitable; ldl is possible but slow
         detR = np.prod([Decimal(Ri[0][i,i]) for i in range(len(Ri[0]))])
         error = np.max(np.abs(linalg.lu_solve(Ri,R) - np.identity(len(R))))
         if detR > 0.0 and error < self.LU_error:

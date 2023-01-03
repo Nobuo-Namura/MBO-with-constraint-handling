@@ -508,7 +508,10 @@ class BayesianOptimization(GaussianProcess):
                     elif self.CRITERIA == 'EIPBII' and pbi_sample[i,k] > self.pbiref[k]:
                         self.pbiref[k] = pbi_sample[i,k]
         
-        self.nich_count = np.array([np.sum(self.nich/self.normalized_refvec_distance[i,:]) for i in range(self.nref)])
+        if self.nich.sum() > 0:
+            self.nich_count = np.array([np.sum(self.nich/self.normalized_refvec_distance[i,:]) for i in range(self.nref)])
+        else:
+            self.nich_count = np.ones(self.nref)
         if self.CRITERIA == 'EPBII':
             pbimax = np.max(self.pbiref[self.pbiref<1.0e20])
             self.pbiref = np.where(self.pbiref<1.0e20, self.pbiref, 1.1*pbimax)
@@ -722,9 +725,14 @@ class BayesianOptimization(GaussianProcess):
         self.n_add = n_add
         NOISE = np.where(self.theta[:,-1]>0, True, False)
         x_opt, f_opt, g_opt = self._optimize_sop(npop_ea, ngen_ea, nfg, PRINT)
-        if distance.cdist(self.x, x_opt).min() < self.dist_threshold:
-            print('selected x is too close to stored ones')
-            x_opt, f_opt, g_opt = self._optimize_sop(npop_ea, ngen_ea, nfg, 'Error', PRINT)
+        i = 0
+        x_opt_temp = x_opt.copy()
+        while distance.cdist(self.x, x_opt).min() < self.dist_threshold:
+            i += 1
+            print('selected x is too close to stored ones: ' + str(i))
+            x_opt = x_opt_temp + np.random.choice([-1.0, 1.0], self.nx)*np.random.uniform(low=i/np.sqrt(self.nx), high=(i+1)/np.sqrt(self.nx), size=self.nx)*self.dist_threshold
+            x_opt = np.where(x_opt>=self.xmin, x_opt, self.xmin)
+            x_opt = np.where(x_opt<=self.xmax, x_opt, self.xmax)
         x_add = x_opt.copy()
         f, s = self.estimation(x_opt[0], nfg)
         self.gamma_mi[nfg] += s**2.0
@@ -737,9 +745,14 @@ class BayesianOptimization(GaussianProcess):
                     theta = self.training(theta0, npop, ngen, mingen, STOP, NOISE, PRINT)
                 self.construction(theta)
                 x_opt, f_opt, g_opt = self._optimize_sop(npop_ea, ngen_ea, nfg, PRINT)
-                if distance.cdist(self.x, x_opt).min() < self.dist_threshold:
-                    print('selected x is too close to stored ones')
-                    x_opt, f_opt, g_opt = self._optimize_sop(npop_ea, ngen_ea, nfg, 'Error', PRINT)
+                i = 0
+                x_opt_temp = x_opt.copy()
+                while distance.cdist(self.x, x_opt).min() < self.dist_threshold:
+                    i += 1
+                    print('selected x is too close to stored ones: ' + str(i))
+                    x_opt = x_opt_temp + np.random.choice([-1.0, 1.0], self.nx)*np.random.uniform(low=i/np.sqrt(self.nx), high=(i+1)/np.sqrt(self.nx), size=self.nx)*self.dist_threshold
+                    x_opt = np.where(x_opt>=self.xmin, x_opt, self.xmin)
+                    x_opt = np.where(x_opt<=self.xmax, x_opt, self.xmax)
                 x_add = np.vstack([x_add, x_opt])
                 f, s = self.estimation(x_opt[0], nfg)
                 self.gamma_mi[nfg] += s**2.0
