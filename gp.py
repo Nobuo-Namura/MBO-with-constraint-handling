@@ -46,7 +46,8 @@ class GaussianProcess:
         
 #======================================================================
     def training(self, theta0 = 3.0, npop = 500, ngen = 500, mingen = 0, \
-                 STOP=True, NOISE=[False], PRINT=True):
+                 STOP=True, NOISE=[False], PRINT=True, KERNEL='Gaussian'):
+        self.kern = self.kernel_function(KERNEL)
         self.NOISE = NOISE
         self.theta = np.zeros((self.nf+self.ng, self.nx+1))
         func = self._likelihood
@@ -74,6 +75,31 @@ class GaussianProcess:
         return self.theta
 
 #======================================================================
+    def kernel_function(self, KERNEL='Gaussian'):
+        def gaussian_kernel(r):
+            return np.exp(-r**2)
+        def matern5_kernel(r):
+            rs5 = np.sqrt(5)*r
+            return (1.0 + rs5 + (rs5**2)/3.0)*np.exp(-rs5)
+        def matern3_kernel(r):
+            rs3= np.sqrt(3)*r
+            return (1.0 + rs3)*np.exp(-rs3)
+        def exponential_kernel(r):
+            return np.exp(-r)
+
+        if KERNEL == 'Gaussian':
+            kern = gaussian_kernel
+        elif KERNEL == 'Matern5':
+            kern = matern5_kernel
+        elif KERNEL == 'Matern3':
+            kern = matern3_kernel
+        elif KERNEL == 'Exponential':
+            kern = exponential_kernel
+        else:
+            kern = gaussian_kernel
+        return kern
+
+#======================================================================
     def _likelihood(self, theta0):
         theta = 10.0**theta0
         R, detR, mu, sigma, xtheta = self._corr_matrix(theta, self.nfg)
@@ -86,7 +112,8 @@ class GaussianProcess:
 #======================================================================
     def _corr_matrix(self, theta, nfg):
         xtheta = np.sqrt(theta[:self.nx])*self.x0
-        R = np.exp(-distance.cdist(xtheta, xtheta)**2.0)
+#        R = np.exp(-distance.cdist(xtheta, xtheta)**2.0)
+        R = self.kern(distance.cdist(xtheta, xtheta))
         if self.nx < len(theta):
             R += np.diag(np.full(len(R),theta[-1]))
         ones = np.ones(self.ns)
@@ -109,7 +136,11 @@ class GaussianProcess:
         return R, detR, mu, sigma, xtheta
 
 #======================================================================
-    def construction(self, theta):
+    def construction(self, theta, KERNEL='Gaussian'):
+        try:
+            self.kern
+        except:
+            self.kern = self.kernel_function(KERNEL)
         self.theta = theta
         self.mu = np.zeros(self.nf + self.ng)
         self.sigma = np.zeros(self.nf + self.ng)
@@ -135,7 +166,8 @@ class GaussianProcess:
             self.nfg = nfg
         xs0 = (xs - self.xmin)/(self.xmax - self.xmin)
         xstheta = np.sqrt(self.theta[self.nfg,:self.nx])*xs0
-        r = np.exp(-distance.cdist(xstheta.reshape([1,len(xstheta)]), self.xtheta[:,:,self.nfg])**2.0).reshape(self.ns)
+#        r = np.exp(-distance.cdist(xstheta.reshape([1,len(xstheta)]), self.xtheta[:,:,self.nfg])**2.0).reshape(self.ns)
+        r = self.kern(distance.cdist(xstheta.reshape([1,len(xstheta)]), self.xtheta[:,:,self.nfg])).reshape(self.ns)
         f = self.mu[self.nfg] + np.dot(r, self.Rifm[:,self.nfg])
         Rir = linalg.lu_solve(self.Ri[self.nfg], r)
         ones = np.ones(len(self.Rifm[:,0]))
@@ -218,6 +250,7 @@ if __name__ == "__main__":
     ns = 30                      # Number of initial sample points when GENE=True
     MIN = np.full(nf,True)       # Minimization: True, Maximization: False
     NOISE = np.full(nf+ng,False) # Use True if functions are noisy (Griewank, Rastrigin, DTLZ1, etc.)
+    KERNEL = 'Gaussian'          # Kernel function: Gaussian, Matern5, Matern3, Exponential
     xmin = np.full(nx, 0.0)      # Lower bound of design sapce
     xmax = np.full(nx, 1.0)      # Upper bound of design sapce
     current_dir = '.'
@@ -231,7 +264,7 @@ if __name__ == "__main__":
     df_sample = df_samples[0]
     
     gp = GaussianProcess(df_sample, df_design_space)
-    theta = gp.training(theta0 = 3.0, npop = 500, ngen = 500, mingen=0, STOP=True, NOISE=NOISE)
+    theta = gp.training(theta0 = 3.0, npop = 500, ngen = 500, mingen=0, STOP=True, NOISE=NOISE, KERNEL=KERNEL)
     gp.construction(theta)
     
     if nx == 2:

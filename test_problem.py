@@ -51,55 +51,73 @@ def Branin(x, nf=1, ng=0):
     return np.array([f])
 
 #======================================================================
-def WFG1(x, nf=2, ng=0, k=1):
+def WFG1(x, nf=2, ng=0, k=0):
+    if k == 0:
+        k = nf - 1
     x = x*np.arange(2, 2*(len(x)+1), 2)
     f = optproblems.wfg.WFG1(nf, len(x), k).objective_function(x)
     return f
 
 #======================================================================
-def WFG2(x, nf=2, ng=0, k=1):
+def WFG2(x, nf=2, ng=0, k=0):
+    if k == 0:
+        k = nf - 1
     x = x*np.arange(2, 2*(len(x)+1), 2)
     f = optproblems.wfg.WFG2(nf, len(x), k).objective_function(x)
     return f
 
 #======================================================================
-def WFG3(x, nf=2, ng=0, k=1):
+def WFG3(x, nf=2, ng=0, k=0):
+    if k == 0:
+        k = nf - 1
     x = x*np.arange(2, 2*(len(x)+1), 2)
     f = optproblems.wfg.WFG3(nf, len(x), k).objective_function(x)
     return f
 
 #======================================================================
-def WFG4(x, nf=2, ng=0, k=1):
+def WFG4(x, nf=2, ng=0, k=0):
+    if k == 0:
+        k = nf - 1
     x = x*np.arange(2, 2*(len(x)+1), 2)
     f = optproblems.wfg.WFG4(nf, len(x), k).objective_function(x)
     return f
 
 #======================================================================
-def WFG5(x, nf=2, ng=0, k=1):
+def WFG5(x, nf=2, ng=0, k=0):
+    if k == 0:
+        k = nf - 1
     x = x*np.arange(2, 2*(len(x)+1), 2)
     f = optproblems.wfg.WFG5(nf, len(x), k).objective_function(x)
     return f
 
 #======================================================================
-def WFG6(x, nf=2, ng=0, k=1):
+def WFG6(x, nf=2, ng=0, k=0):
+    if k == 0:
+        k = nf - 1
     x = x*np.arange(2, 2*(len(x)+1), 2)
     f = optproblems.wfg.WFG6(nf, len(x), k).objective_function(x)
     return f
 
 #======================================================================
-def WFG7(x, nf=2, ng=0, k=1):
+def WFG7(x, nf=2, ng=0, k=0):
+    if k == 0:
+        k = nf - 1
     x = x*np.arange(2, 2*(len(x)+1), 2)
     f = optproblems.wfg.WFG7(nf, len(x), k).objective_function(x)
     return f
 
 #======================================================================
-def WFG8(x, nf=2, ng=0, k=1):
+def WFG8(x, nf=2, ng=0, k=0):
+    if k == 0:
+        k = nf - 1
     x = x*np.arange(2, 2*(len(x)+1), 2)
     f = optproblems.wfg.WFG8(nf, len(x), k).objective_function(x)
     return f
 
 #======================================================================
-def WFG9(x, nf=2, ng=0, k=1):
+def WFG9(x, nf=2, ng=0, k=0):
+    if k == 0:
+        k = nf - 1
     x = x*np.arange(2, 2*(len(x)+1), 2)
     f = optproblems.wfg.WFG9(nf, len(x), k).objective_function(x)
     return f

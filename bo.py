@@ -25,13 +25,11 @@ from scipy.spatial import distance
 import functools
 from sklearn.cluster import KMeans
 from pyDOE2 import lhs
-from mpl_toolkits.mplot3d import Axes3D
 
 from pymoo.algorithms.soo.nonconvex.cmaes import CMAES
 from pymoo.algorithms.soo.nonconvex.ga import GA
 from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.algorithms.moo.nsga3 import NSGA3
-from pymoo.factory import get_sampling, get_crossover, get_mutation
 from pymoo.optimize import minimize
 from pymoo.core.problem import ElementwiseProblem
 
@@ -90,9 +88,9 @@ class BayesianOptimization(GaussianProcess):
                 plt.close()
             elif self.nf==3: 
                 fig = plt.figure('refvec-3D')
-                ax = Axes3D(fig)
+                ax = fig.add_subplot(projection='3d')
                 for i in range(self.n_add):
-                    ax.scatter3D(refvec_on_hp[self.refvec_cluster==i,0],refvec_on_hp[self.refvec_cluster==i,1],refvec_on_hp[self.refvec_cluster==i,2])
+                    ax.scatter(refvec_on_hp[self.refvec_cluster==i,0],refvec_on_hp[self.refvec_cluster==i,1],refvec_on_hp[self.refvec_cluster==i,2])
                 title = 'refvec_at_'+str(self.ns)+'_samples.png'
                 plt.savefig(title, dpi=300)
                 plt.close()
@@ -276,7 +274,7 @@ class BayesianOptimization(GaussianProcess):
             sys.exit()
         f_min = np.min(self.f_ref, axis=0) - f_epsilon
         f_max = np.max(self.f_ref, axis=0) + f_epsilon
-        minmax = 1.0 - 2.0*self.MIN.astype(np.float)
+        minmax = np.where(self.MIN, -1.0, 1.0)
         self.utopia = np.where(minmax<0.0, f_min, f_max)
         self.nadir = np.where(minmax<0.0, f_max, f_min)
         if PRINT:
@@ -302,12 +300,8 @@ class BayesianOptimization(GaussianProcess):
             nref, refvec_on_hp = self.generate_refvec(self.nf, n_randvec_ea, nh_ea, nhin_ea, self.multiplier)
             algorithm = NSGA3(pop_size=nref, ref_dirs=refvec_on_hp)
         else:
-            algorithm = NSGA2(pop_size=self.npop_ea, n_offsprings=self.npop_ea, 
-                              sampling=get_sampling("real_random"), 
-                              crossover=get_crossover("real_sbx", prob=0.9, eta=10), 
-                              mutation=get_mutation("real_pm", eta=20), 
-                              eliminate_duplicates=True)
-        res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_gen', ngen_ea), ave_history=False, verbose=False)
+            algorithm = NSGA2(pop_size=npop_ea)
+        res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_gen', ngen_ea), save_history=False, verbose=False)
         return np.where(self.MIN, 1.0, -1.0)*res.F, res.G, res.X
 
 #======================================================================
@@ -329,9 +323,9 @@ class BayesianOptimization(GaussianProcess):
             func = functools.partial(self._estimate_fg_as_min, nfg=iobj)
             problem = SOProblem(func, self.nx, self.ng, self.xmin, self.xmax)
 #            algorithm = CMAES(x0=np.random.random(problem.n_var))
-#            res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_evals', 10000), ave_history=False, verbose=False)
+#            res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_evals', 10000), save_history=False, verbose=False)
             algorithm = GA(pop_size=100, eliminate_duplicates=True)
-            res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_gen', 100), ave_history=False, verbose=False)
+            res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_gen', 100), save_history=False, verbose=False)
             x_opt[iobj,:] = res.X
         for iobj in range(self.nf):
             fg_opt = self.estimate_multiobjective_fg(x_opt[iobj,:])
@@ -435,9 +429,9 @@ class BayesianOptimization(GaussianProcess):
                 plt.close()
             elif self.nf==3: 
                 fig = plt.figure('refvec-3D')
-                ax = Axes3D(fig)
+                ax = fig.add_subplot(projection='3d')
                 for i in range(self.n_add):
-                    ax.scatter3D(refvec[refvec_cluster==i,0],refvec[refvec_cluster==i,1],refvec[refvec_cluster==i,2])
+                    ax.scatter(refvec[refvec_cluster==i,0],refvec[refvec_cluster==i,1],refvec[refvec_cluster==i,2])
                 title = 'refvec_at_'+str(self.ns)+'_samples.png'
                 plt.savefig(title, dpi=300)
                 plt.close()
@@ -612,12 +606,17 @@ class BayesianOptimization(GaussianProcess):
                 for j in range(ns):
                     if all(g[j,:]<=0):
                         irank = 0
+                        flag = False
                         for iobj in range(nf):
                             if self.MIN[iobj] and f[i,iobj]>=f[j,iobj]:
                                 irank += 1
+                                if f[i,iobj]>f[j,iobj]:
+                                    flag = True
                             elif (not self.MIN[iobj]) and f[i,iobj]<=f[j,iobj]:
                                 irank += 1
-                        if i!=j and irank == nf:
+                                if f[i,iobj]<=f[j,iobj]:
+                                    flag = True
+                        if i!=j and irank == nf and flag:
                             rank[i] += 1
             else:
                 rank[i] = -1
@@ -673,6 +672,19 @@ class BayesianOptimization(GaussianProcess):
         return mi*p_const
 
 #======================================================================
+    def _eimi_as_min(self, xs, fref=0, nfg=-1):
+        f, s = self.estimation(xs, nfg)
+        s2 = s**2.0
+        phi = self.sqrt_alpha*(np.sqrt(s2 + self.gamma_mi[nfg]) - np.sqrt(self.gamma_mi[nfg]))
+        eimi = self.expected_improvement(fref, f, phi, MIN=self.MIN[nfg])
+        
+        p_const = 1.0
+        for i in range(self.ng):
+            g, sg = self.estimation(xs, nfg=self.nf+i)
+            p_const *= self.probability_of_improvement(0.0, g, sg, MIN=True)
+        return -eimi*p_const
+
+#======================================================================
     def _optimize_sop(self, npop=100, ngen=100, nfg=0, PRINT=False):
         
         class SOProblem(ElementwiseProblem):
@@ -701,14 +713,27 @@ class BayesianOptimization(GaussianProcess):
             self.acquisition_function = functools.partial(self._ei_as_min, fref=fref, nfg=nfg)
         elif self.CRITERIA == 'GP-MI':
             self.acquisition_function = functools.partial(self._mi_as_min, nfg=nfg)
+        elif self.CRITERIA == 'EI-MI':
+            mask = np.all(self.g<=0, axis=1)
+            if self.MIN[nfg]:
+                if mask.sum()>0:
+                    fref = self.f[mask, nfg].min()
+                else:
+                    fref = self.f[:, nfg].max()
+            else:
+                if mask.sum()>0:
+                    fref = self.f[mask, nfg].max()
+                else:
+                    fref = self.f[:, nfg].min()
+            self.acquisition_function = functools.partial(self._eimi_as_min, fref=fref, nfg=nfg)
         else:
             self.acquisition_function = functools.partial(self._error_as_min, nfg=nfg)
         
         problem = SOProblem(self.acquisition_function, self.nx, self.xmin, self.xmax)
 #        algorithm = CMAES(x0=np.random.random(problem.n_var))
-#        res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_evals', n_eval), ave_history=False, verbose=PRINT)
+#        res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_evals', n_eval), save_history=False, verbose=PRINT)
         algorithm = GA(pop_size=npop, eliminate_duplicates=True)
-        res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_gen', ngen), ave_history=False, verbose=PRINT)
+        res = minimize(problem, algorithm, return_least_infeasible=True, seed=1, termination=('n_gen', ngen), save_history=False, verbose=PRINT)
         
         x_opt = res.X
         fg_opt = self.estimate_multiobjective_fg(x_opt)
@@ -779,6 +804,7 @@ if __name__ == "__main__":
     CRITERIA = 'EPBII'                      # EPBII or EIPBII for multi-objective problems, EI, GP-MI, Error, or Estimation for single-objective problems
     MIN = np.full(nf,True)                  # Minimization: True, Maximization: False
     NOISE = np.full(nf+ng,False)            # Use True if functions are noisy (Griewank, Rastrigin, DTLZ1, etc.)
+    KERNEL = 'Gaussian'                     # Kernel function: Gaussian, Matern5, Matern3, Exponential
     xmin = np.full(nx, 0.0)                 # Lower bound of design sapce
     xmax = np.full(nx, 1.0)                 # Upper bound of design sapce
     SRVA = True                             # True=surrogate-assisted reference vector adaptation, False=two-layered simplex latice-design
@@ -800,7 +826,7 @@ if __name__ == "__main__":
     max_iter = int((ns_max + (n_add - 1) - ns)/n_add)
     for itr in range(max_iter):
         print('=== Iteration = '+str(itr)+', Number of sample = '+str(gp.ns)+' ======================')
-        theta = gp.training(theta0 = 3.0, npop = 500, ngen = 500, mingen=0, STOP=True, NOISE=NOISE)
+        theta = gp.training(theta0 = 3.0, npop = 500, ngen = 500, mingen=0, STOP=True, NOISE=NOISE, KERNEL=KERNEL)
         gp.construction(theta)
         if nf == 1:
             x_add, f_add_est, g_add_est = gp.optimize_single_objective_problem(CRITERIA=CRITERIA, n_add=n_add, npop_ea=npop_ea, ngen_ea=ngen_ea, PRINT=False, RETRAIN=True, theta0=3.0, npop=100, ngen=100, mingen=0, STOP=True)

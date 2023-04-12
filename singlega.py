@@ -17,7 +17,6 @@ Please cite the article(s) if you use the code.
 
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 import functools
 from pyDOE2 import lhs
@@ -276,7 +275,7 @@ if __name__ == "__main__":
         plt.show()
         
         fig = plt.figure('problem-3D')
-        ax = Axes3D(fig)
-        ax.scatter3D(xopt[0],xopt[1],fopt,c='black')
+        ax = fig.add_subplot(projection='3d')
+        ax.scatter(xopt[0],xopt[1],fopt,c='black')
         ax.plot_surface(X, Y, F, rstride=1, cstride=1, cmap=cm.jet)
     

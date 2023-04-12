@@ -22,7 +22,7 @@ def igd_history(f, igd_ref, plus=False, MIN=[]):
     if plus:
         if len(MIN) == 0:
             weight = np.full(len(f[0,:]), True)
-        weight = - 1.0 + 2.0*MIN.astype(np.float)
+        weight = np.where(MIN, 1.0, -1.0)
         dist = weight*(np.tile(f, [len(igd_ref[:,0]),1,1]).transpose([1,0,2]) - np.tile(igd_ref, [len(f[:,0]),1,1]))
         dist = np.sqrt(np.sum(np.where(dist>0, dist, 0)**2, axis=2))
     else:

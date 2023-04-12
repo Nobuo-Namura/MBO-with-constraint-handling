@@ -18,7 +18,6 @@ Please cite the article(s) if you use the MBO code.
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 import functools
 import time
 import shutil
@@ -50,7 +49,8 @@ if __name__ == "__main__":
     n_add = 5                                # Number of additional sample points at each iteration (>=1)
     ns_max = 40                              # Number of maximum function evaluation
     CRITERIA = 'EPBII'                       # EPBII or EIPBII for multi-objective problems, EI, GP-MI, Error, or Estimation for single-objective problems
-    NOISE = np.full(nf+ng,False)             # Use True if functions are noisy (Griewank, Rastrigin, DTLZ1, etc.)
+    NOISE = np.full(nf+ng,True)              # Use True if functions are noisy (Griewank, Rastrigin, DTLZ1, etc.)
+    KERNEL = 'Gaussian'                       # Kernel function: Gaussian, Matern5, Matern3, Exponential
     #for multiobjective problems
     SRVA = True                              # True=surrogate-assisted reference vector adaptation, False=two-layered simplex latice-design
     OPTIMIZER = 'NSGA3'                      # NSGA3 or NSGA2 for ideal and nadir point determination (and reference vector adaptation if SRVA=True)
@@ -58,7 +58,7 @@ if __name__ == "__main__":
     nh = 0 #division.loc[nf, 'nh']           # Division number for the outer layer of the two-layered simplex latice-design for EPBII/EIPBII (>=0)
     nhin = 0 #division.loc[nf, 'nhin']       # Division number for the inner layer of the two-layered simplex latice-design for EPBII/EIPBII (>=0)
     #evolutionary algorithm
-    ngen_ea = 200                            # Number of generation
+    ngen_ea = 100                            # Number of generation
     npop_ea = division.loc[nf, 'npop_ea']    # Number of population for NSGA2 for multi-objective problems and GA for single-objective problems
     nh_ea = division.loc[nf, 'nh_ea']        # Division number for the outer layer of the two-layered simplex latice-design for NSGA3 (>=0)
     nhin_ea = division.loc[nf, 'nhin_ea']    # Division number for the inner layer of the two-layered simplex latice-design for NSGA3 (>=0)
@@ -156,8 +156,8 @@ if __name__ == "__main__":
             print('=== Iteration = '+str(itr)+', Number of sample = '+str(gp.ns)+' ======================')
             
             #Kriging and infill criterion
-            theta = gp.training(theta0 = 3.0, npop = 100, ngen = 100, mingen=0, STOP=True, NOISE=NOISE) # reasonable
-            # theta = gp.training(theta0 = 3.0, npop = 500, ngen = 500, mingen=0, STOP=True, NOISE=NOISE) # setting used in the papers
+            theta = gp.training(theta0 = 3.0, npop = 100, ngen = 100, mingen=0, STOP=True, NOISE=NOISE, KERNEL=KERNEL) # reasonable
+            # theta = gp.training(theta0 = 3.0, npop = 500, ngen = 500, mingen=0, STOP=True, NOISE=NOISE, KERNEL=KERNEL) # setting used in the papers
             gp.construction(theta)
             if gp.nf == 1:
                 x_add, f_add_est, g_add_est = gp.optimize_single_objective_problem(CRITERIA, n_add, npop_ea, ngen_ea, theta0=3.0, npop=100, ngen=100, mingen=0, STOP=True, PRINT=False, RETRAIN=True)
@@ -207,7 +207,7 @@ if __name__ == "__main__":
                     plt.scatter(f_add_est[:,0],f_add_est[:,1], facecolors='none', edgecolors='magenta', marker='o', s=60, linewidth=2, label='selected candidate points')
                     plt.scatter(gp.f[-gp.n_add:,0], gp.f[-gp.n_add:,1], facecolors='magenta', marker='x', s=30, linewidth=1.5, label='additional sample points')
                     plt.legend()
-                    plt.show(block=False)
+                    # plt.show(block=False)
                     title = current_dir + '/2D_Objective_space_'+func_name+' with '+str(gp.ns-gp.n_add)+'-samples_in_'+str(itrial)+'-th_trial.png'
                     plt.savefig(title, dpi=300)
                     plt.close()
@@ -224,13 +224,13 @@ if __name__ == "__main__":
                     
                 elif nf == 3:
                     fig = plt.figure('3D Objective-space '+func_name+' with '+str(gp.ns-gp.n_add)+'-samples')
-                    ax = Axes3D(fig)
-                    # ax.scatter3D(gp.f[rank>1,0], gp.f[rank>1,1], gp.f[rank>1,2], marker='o', c='black', s=10, label='sample points')
-                    # ax.scatter3D(gp.f_opt[:,0], gp.f_opt[:,1], gp.f_opt[:,2], marker='o', c='grey', s=10, alpha=0.5, label='estimated PF')
-                    ax.scatter3D(gp.f[pareto,0], gp.f[pareto,1], gp.f[pareto,2], marker='o', c='blue', s=20, label='NDSs among sample points')
-                    ax.scatter3D(gp.f_candidate[:,0], gp.f_candidate[:,1], gp.f_candidate[:,2], c=gp.fitness_org, cmap='jet', marker='*', s=40, label='candidate points')
-                    ax.scatter3D(f_add_est[:,0], f_add_est[:,1], f_add_est[:,-1], marker='o', c='none', edgecolor='magenta', s=60, linewidth=2, label='selected candidate points')
-                    ax.scatter3D(gp.f[-gp.n_add:,0],gp.f[-gp.n_add:,1],gp.f[-gp.n_add:,-1], marker='o', c='none', edgecolor='black', s=60, linewidth=2, label='additional sample points')
+                    ax = fig.add_subplot(projection='3d')
+                    # ax.scatter(gp.f[rank>1,0], gp.f[rank>1,1], gp.f[rank>1,2], marker='o', c='black', s=10, label='sample points')
+                    # ax.scatter(gp.f_opt[:,0], gp.f_opt[:,1], gp.f_opt[:,2], marker='o', c='grey', s=10, alpha=0.5, label='estimated PF')
+                    ax.scatter(gp.f[pareto,0], gp.f[pareto,1], gp.f[pareto,2], marker='o', c='blue', s=20, label='NDSs among sample points')
+                    ax.scatter(gp.f_candidate[:,0], gp.f_candidate[:,1], gp.f_candidate[:,2], c=gp.fitness_org, cmap='jet', marker='*', s=40, label='candidate points')
+                    ax.scatter(f_add_est[:,0], f_add_est[:,1], f_add_est[:,-1], marker='o', c='none', edgecolor='magenta', s=60, linewidth=2, label='selected candidate points')
+                    ax.scatter(gp.f[-gp.n_add:,0],gp.f[-gp.n_add:,1],gp.f[-gp.n_add:,-1], marker='o', c='none', edgecolor='black', s=60, linewidth=2, label='additional sample points')
                     ax.view_init(elev=30, azim=45)
                     plt.legend()
                     title = current_dir + '/3D_Objective_space_'+func_name+' with '+str(gp.ns-gp.n_add)+'-samples_in_'+str(itrial)+'-th_trial.png'
@@ -238,12 +238,12 @@ if __name__ == "__main__":
                     plt.close()
                     
                     fig2 = plt.figure('solutions on 3D Objective-space '+func_name+' with '+str(gp.ns)+'-samples')
-                    ax2 = Axes3D(fig2)
+                    ax2 = fig2.add_subplot(projection='3d')
                     if not IGD_FLAG:
                         pass
                     else:
-                        ax2.scatter3D(igd_ref[:,0],igd_ref[:,1],igd_ref[:,-1],c='green',s=1)
-                    ax2.scatter3D(gp.f[pareto,0],gp.f[pareto,1],gp.f[pareto,-1],c='blue',s=20,marker='o')
+                        ax2.scatter(igd_ref[:,0],igd_ref[:,1],igd_ref[:,-1],c='green',s=1)
+                    ax2.scatter(gp.f[pareto,0],gp.f[pareto,1],gp.f[pareto,-1],c='blue',s=20,marker='o')
                     ax2.view_init(elev=30, azim=45)
                     title = current_dir + '/Optimal_solutions_'+func_name+' with '+str(gp.ns)+'-samples_in_'+str(itrial)+'-th_trial.png'
                     plt.savefig(title)
