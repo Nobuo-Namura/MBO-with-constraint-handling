@@ -79,13 +79,13 @@ class GaussianProcess:
         def gaussian_kernel(r):
             return np.exp(-r**2)
         def matern5_kernel(r):
-            rs5 = np.sqrt(5)*r
+            rs5 = np.sqrt(5)*np.abs(r)
             return (1.0 + rs5 + (rs5**2)/3.0)*np.exp(-rs5)
         def matern3_kernel(r):
-            rs3= np.sqrt(3)*r
+            rs3= np.sqrt(3)*np.abs(r)
             return (1.0 + rs3)*np.exp(-rs3)
         def exponential_kernel(r):
-            return np.exp(-r)
+            return np.exp(-np.abs(r))
 
         if KERNEL == 'Gaussian':
             kern = gaussian_kernel
